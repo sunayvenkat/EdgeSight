@@ -6,6 +6,7 @@ from collections import deque
 
 from edgesight.config import (FRAME_WIDTH, FRAME_HEIGHT, FPS)
 from edgesight.camera import CameraStream, CameraError
+from edgesight.detector import ObjectDetector, draw_detections
 
 def main():
     camera = CameraStream()
@@ -14,6 +15,12 @@ def main():
     frame_times = deque(maxlen=30)
 
     try:
+        print("Loading EdgeSight detection model... ")
+
+        detector = ObjectDetector()
+
+        print("EdgeSight detection model loaded successfully")
+
         camera.open()
 
         print("Camera opened successfully")
@@ -22,6 +29,15 @@ def main():
         while True:
             # Capture one frame
             frame = camera.read()
+
+            # Run neural network inference
+            inference_start = time.perf_counter()
+
+            detections = detector.detect(frame)
+
+            inference_ms = (time.perf_counter() - inference_start) * 1000
+
+            annotated = draw_detections(frame, detections)
 
             current_time = time.perf_counter()
             frame_times.append(current_time)
@@ -38,11 +54,12 @@ def main():
             height, width = frame.shape[:2]
 
             # Draw performance information
-            cv2.putText(frame, f"EdgeSight | FPS: {fps:.1f}", (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-            cv2.putText(frame, f"Resolution: {width}x{height}", (15, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            cv2.putText(annotated, f"FPS: {fps:.1f}", (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(annotated, f"Inference: {inference_ms:.1f} ms", (15, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(annotated, f"Objects: {len(detections)}", (15, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             # Display the video
-            cv2.imshow("EdgeSight - Live Feed", frame)
+            cv2.imshow("EdgeSight - Object Detection", annotated)
 
             # Exit when user presses 'q'
             if cv2.waitKey(1) & 0xFF == ord('q'):

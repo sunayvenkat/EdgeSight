@@ -5,6 +5,9 @@ __pycache__/
 .pytest_cache/
 .env
 
+*.pt
+runs/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
