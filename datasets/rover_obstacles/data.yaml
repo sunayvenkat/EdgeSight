@@ -1,0 +1,14 @@
+
+
+path: datasets/rover_obstacles
+
+train: images/train
+val: images/val
+test: images/test
+
+nc: 3
+
+names:
+  0: rock
+  1: cone
+  2: debris
