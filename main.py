@@ -4,9 +4,11 @@ import cv2
 import time
 from collections import deque
 
-from edgesight.config import (FRAME_WIDTH, FRAME_HEIGHT, FPS)
 from edgesight.camera import CameraStream, CameraError
-from edgesight.detector import ObjectDetector, draw_detections
+from edgesight.detector import ObjectDetector
+from edgesight.events import ZoneMonitor
+from edgesight.tracker import ObjectTracker, draw_tracks
+
 
 def main():
     camera = CameraStream()
@@ -18,6 +20,8 @@ def main():
         print("Loading EdgeSight detection model... ")
 
         detector = ObjectDetector()
+        tracker = ObjectTracker(detector)
+        zone = ZoneMonitor()
 
         print("EdgeSight detection model loaded successfully")
 
@@ -30,17 +34,27 @@ def main():
             # Capture one frame
             frame = camera.read()
 
-            # Run neural network inference
-            inference_start = time.perf_counter()
+            # Run detection and tracking together
+            start = time.perf_counter()
+            objects = tracker.track(frame)
+            inference_ms = (time.perf_counter() - start) * 1000
 
-            detections = detector.detect(frame)
+            # Evaluate monitoring zone
+            status, events = zone.update(objects, frame.shape)
 
-            inference_ms = (time.perf_counter() - inference_start) * 1000
+            for event in events:
+                print(f"[ZONE] Track {event.track_id}: " f"{event.action}")
 
-            annotated = draw_detections(frame, detections)
+            # Draw tracked objects
+            annotated = draw_tracks(frame, objects)
 
-            current_time = time.perf_counter()
-            frame_times.append(current_time)
+            left, top, right, bottom = zone.bounds(frame.shape)
+
+            cv2.rectangle(annotated, (left, top), (right, bottom), (0, 255, 255), 2)
+
+            # Calculate FPS
+            now = time.perf_counter()
+            frame_times.append(now)
 
             fps = 0.0
 
@@ -50,18 +64,19 @@ def main():
                 if elapsed > 0:
                     fps = (len(frame_times) - 1) / elapsed
 
-            # Retrieve frame dimensions
-            height, width = frame.shape[:2]
+            # Draw metrics
+            metrics = [f"FPS: {fps:.1f}", f"Inference: {inference_ms:.1f} ms", f"Objects: {len(objects)}", f"Status: {status}"]
 
-            # Draw performance information
-            cv2.putText(annotated, f"FPS: {fps:.1f}", (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            cv2.putText(annotated, f"Inference: {inference_ms:.1f} ms", (15, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            cv2.putText(annotated, f"Objects: {len(detections)}", (15, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            for i, text in enumerate(metrics):
+                color = (255, 255, 255)
 
-            # Display the video
+                if i == 3:
+                    color = ((0, 255, 255) if status == "CAUTION" else (0, 255, 0))
+
+                cv2.putText(annotated, text, (15, 30 + i * 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
             cv2.imshow("EdgeSight - Object Detection", annotated)
 
-            # Exit when user presses 'q'
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 

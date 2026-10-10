@@ -17,3 +17,11 @@ DETECTION_CONFIDENCE = 0.40
 
 # Image size
 INFERENCE_IMAGE_SIZE = 640
+
+TRACKER_CONFIG = "bytetrack.yaml"
+
+# Normalized monitoring-zone boundaries
+ZONE_LEFT = 0.20
+ZONE_TOP = 0.35
+ZONE_RIGHT = 0.80
+ZONE_BOTTOM = 0.95
