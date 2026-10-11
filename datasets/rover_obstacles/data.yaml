@@ -1,6 +1,5 @@
 
 
-path: datasets/rover_obstacles
 
 train: images/train
 val: images/val
