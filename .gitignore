@@ -14,6 +14,7 @@ datasets/rover_obstacles/images/**/*.jpeg
 datasets/rover_obstacles/images/**/*.png
 datasets/rover_obstacles/labels/**/*.txt
 
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
