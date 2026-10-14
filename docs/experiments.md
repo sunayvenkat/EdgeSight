@@ -32,12 +32,12 @@ Does expanding the training dataset with diverse, targeted images improve YOLO26
 
 ## Results
 
-| Metric | pilot_v1 | pilot_v2_data | Change |
-|---|---|---|---|
+|  Metric   | pilot_v1 | pilot_v2_data | Change |
+|-----------|----------|-----------|------------|
 | Precision | TBD | TBD | TBD |
-| Recall | TBD | TBD | TBD |
-| mAP50 | TBD | TBD | TBD |
-| mAP50–95 | TBD | TBD | TBD |
+| Recall    | TBD | TBD | TBD |
+| mAP50     | TBD | TBD | TBD |
+| mAP50–95  | TBD | TBD | TBD |
 
 ## Per-Class Analysis
 

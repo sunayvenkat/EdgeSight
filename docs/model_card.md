@@ -47,10 +47,10 @@ obstacles for a robotic vision application.
 ## Reproducibility
 
 - Model checkpoint SHA-256:
-- Python version:
-- PyTorch version:
-- Ultralytics version:
-- Training configuration:
+- Python version: 3.14.7
+- PyTorch version: 2.14.1+cpu
+- Ultralytics version: 8.4.175
+- Training configuration: 
 - Dataset split fingerprint:
 
 ## Limitations
