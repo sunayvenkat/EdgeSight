@@ -1,0 +1,19 @@
+{
+  "release": "edgesight-ml-v1",
+  "selected_experiment": "pilot_v2_data",
+  "classes": [
+    "rock",
+    "cone",
+    "debris"
+  ],
+  "checkpoint_sha256": "8ef59097dee4889acc8fd327b48fb64547b7f4ba372740fddee6161099a23b9f",
+  "split_lock_sha256": "fd3234a51aafdf6611e982714c8b69f70946fa46c173dc42ee8696a34ab49ffc",
+  "selection_metric": "validation_mAP50_95",
+  "validation": {
+    "images": 21,
+    "precision": 0.6144,
+    "recall": 0.5822,
+    "mAP50": 0.6261,
+    "mAP50_95": 0.3755
+  }
+}

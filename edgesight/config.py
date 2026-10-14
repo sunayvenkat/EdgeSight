@@ -1,5 +1,9 @@
 
 
+from pathlib import Path
+
+
+
 # Camera configuration
 
 CAMERA_INDEX = 0
@@ -10,7 +14,11 @@ FRAME_HEIGHT = 480
 FPS = 30
 
 # Model name
-MODEL_PATH = "yolo26n.pt"
+# Old model; identifies people and common objects
+# MODEL_PATH = "yolo26n.pt"
+
+# New model: identifies rocks, cones, and debris
+MODEL_PATH = str(Path(__file__).resolve().parents[1] / "models" / "selected.pt")
 
 # Minimum confidence to make a detection
 DETECTION_CONFIDENCE = 0.40
