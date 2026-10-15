@@ -1,0 +1,66 @@
+{
+  "recommended_preset": "default",
+  "onnx_sha256": "1a7754f3746511326330c81604ca8c8c9f556fd9d7afc87d6f21c7603114b552",
+  "configuration": {
+    "intra_op_threads": 0,
+    "inter_op_threads": 1,
+    "execution_mode": "sequential",
+    "graph_optimization": "all",
+    "spinning": true,
+    "batch": 1,
+    "imgsz": 640
+  },
+  "baseline_median_ms": 11.179,
+  "optimized_median_ms": 11.179,
+  "latency_reduction_percent": 0.0,
+  "all_results": {
+    "default": {
+      "median_ms": 11.179,
+      "p95_ms": 18.604,
+      "throughput_fps": 80.739,
+      "cpu_percent": 1344.81,
+      "rss_mb": 532.34,
+      "consistent": true
+    },
+    "intra1": {
+      "median_ms": 89.977,
+      "p95_ms": 116.776,
+      "throughput_fps": 11.271,
+      "cpu_percent": 98.07,
+      "rss_mb": 529.09,
+      "consistent": true
+    },
+    "intra2": {
+      "median_ms": 51.827,
+      "p95_ms": 75.702,
+      "throughput_fps": 19.676,
+      "cpu_percent": 197.34,
+      "rss_mb": 528.9,
+      "consistent": true
+    },
+    "intra4": {
+      "median_ms": 16.752,
+      "p95_ms": 48.639,
+      "throughput_fps": 36.894,
+      "cpu_percent": 396.61,
+      "rss_mb": 530.14,
+      "consistent": true
+    },
+    "intra4_nospin": {
+      "median_ms": 19.858,
+      "p95_ms": 32.951,
+      "throughput_fps": 46.207,
+      "cpu_percent": 309.94,
+      "rss_mb": 530.55,
+      "consistent": true
+    },
+    "intra4_basic": {
+      "median_ms": 34.37,
+      "p95_ms": 62.02,
+      "throughput_fps": 26.384,
+      "cpu_percent": 396.13,
+      "rss_mb": 523.58,
+      "consistent": true
+    }
+  }
+}

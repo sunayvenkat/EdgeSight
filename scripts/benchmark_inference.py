@@ -286,14 +286,9 @@ def main():
         "metrics": summary,
     }
 
-    output_path.parent.mkdir(
-        parents=True, exist_ok=True
-    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    output_path.write_text(
-        json.dumps(report, indent=2),
-        encoding="utf-8",
-    )
+    output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
     print("\nEdgeSight CPU Benchmark")
     print("-------------------------")
@@ -302,10 +297,7 @@ def main():
     print(f"P95: {summary['p95_ms']:.2f} ms")
     print(f"Throughput: {summary['throughput_fps']:.2f} FPS")
     print(f"CPU usage: {summary['process_cpu_percent']:.1f}%")
-    print(
-        "Peak sampled RSS: "
-        f"{summary['peak_sampled_rss_mb']:.1f} MB"
-    )
+    print(f"Peak sampled RSS: {summary['peak_sampled_rss_mb']:.1f} MB")
     print(f"Saved: {output_path}")
 
 
