@@ -32,11 +32,7 @@ class LatestFrameBuffer:
         self._dropped_frames = 0
         self._closed = False
 
-    def publish(
-        self,
-        frame: np.ndarray,
-        captured_at: float | None = None,
-    ) -> bool:
+    def publish(self, frame: np.ndarray, captured_at: float | None = None) -> bool:
         """Publish a frame, replacing any older pending frame."""
         if not isinstance(frame, np.ndarray) or frame.size == 0:
             raise ValueError("frame must be a non-empty NumPy array")
@@ -91,6 +87,11 @@ class LatestFrameBuffer:
         with self._condition:
             return self._dropped_frames
 
+    @property
+    def frames_published(self) -> int:
+        with self._condition:
+            return self._next_frame_id
+
     def close(self) -> None:
         """Wake any consumer waiting for a frame."""
         with self._condition:
@@ -101,12 +102,7 @@ class LatestFrameBuffer:
 class AsyncCamera:
     """Capture camera frames on a dedicated background thread."""
 
-    def __init__(
-        self,
-        source: int | str = 0,
-        width: int | None = 640,
-        height: int | None = 480,
-    ) -> None:
+    def __init__(self, source: int | str = 0, width: int | None = 640, height: int | None = 480) -> None:
         self.source = source
         self.width = width
         self.height = height
@@ -123,11 +119,7 @@ class AsyncCamera:
         if self._thread is not None:
             raise RuntimeError("This camera instance has already been started")
 
-        self._thread = threading.Thread(
-            target=self._capture_loop,
-            name="EdgeSightCamera",
-            daemon=True,
-        )
+        self._thread = threading.Thread(target=self._capture_loop, name="EdgeSightCamera", daemon=True)
         self._thread.start()
 
         if not self._started_event.wait(timeout):
@@ -168,9 +160,7 @@ class AsyncCamera:
 
                 if not success:
                     if not self._stop_event.is_set():
-                        self._error = RuntimeError(
-                            "Camera stopped returning frames"
-                        )
+                        self._error = RuntimeError("Camera stopped returning frames")
                     break
 
                 self.buffer.publish(frame, time.monotonic())
@@ -185,17 +175,17 @@ class AsyncCamera:
 
             self.buffer.close()
 
-    def read_latest(
-        self,
-        after_frame_id: int = -1,
-        timeout: float | None = 1.0,
-    ) -> FramePacket | None:
+    def read_latest(self, after_frame_id: int = -1, timeout: float | None = 1.0) -> FramePacket | None:
         """Retrieve the newest available frame."""
         return self.buffer.get_latest(after_frame_id, timeout)
 
     @property
     def dropped_frames(self) -> int:
         return self.buffer.dropped_frames
+
+    @property
+    def frames_captured(self) -> int:
+        return self.buffer.frames_published
 
     @property
     def is_running(self) -> bool:

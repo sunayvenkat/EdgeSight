@@ -70,3 +70,14 @@ def test_empty_frame_is_rejected():
 
     with pytest.raises(ValueError):
         buffer.publish(np.array([]))
+
+def test_frames_published_counter():
+    buffer = LatestFrameBuffer()
+    frame = np.zeros((5, 5, 3), dtype=np.uint8)
+
+    assert buffer.frames_published == 0
+
+    buffer.publish(frame)
+    buffer.publish(frame)
+
+    assert buffer.frames_published == 2
