@@ -50,8 +50,9 @@ def summarize_ms(values: list[float]) -> dict:
     }
 
 
-def process_frame(model, zone_monitor, frame) -> float:
+def process_frame(model, zone_monitor, frame, imgsz) -> float:
     """Run the same tracking and zone-event pipeline in either mode."""
+    inference_size = config.INFERENCE_IMAGE_SIZE if imgsz is None else imgsz
     start = time.perf_counter()
 
     results = model.track(
@@ -59,12 +60,12 @@ def process_frame(model, zone_monitor, frame) -> float:
         persist=True,
         tracker=config.TRACKER_CONFIG,
         conf=config.DETECTION_CONFIDENCE,
-        imgsz=config.INFERENCE_IMAGE_SIZE,
+        imgsz=inference_size,
         device="cpu",
         verbose=False,
     )
 
-    objects: list[TrackedObject] = convert_result(results[0])
+    objects = convert_result(results[0])
     zone_monitor.update(objects, frame.shape)
 
     return (time.perf_counter() - start) * 1000.0
@@ -80,7 +81,7 @@ def load_model_and_monitor():
     return model, zone_monitor
 
 
-def warmup_sync(capture, model, zone_monitor, seconds: float) -> None:
+def warmup_sync(capture, model, zone_monitor, seconds: float, imgsz: int | None) -> None:
     """Warm up the synchronous pipeline before timing."""
     deadline = time.monotonic() + seconds
 
@@ -90,7 +91,7 @@ def warmup_sync(capture, model, zone_monitor, seconds: float) -> None:
         if not success:
             raise RuntimeError("Synchronous camera failed during warmup")
 
-        process_frame(model, zone_monitor, frame)
+        process_frame(model, zone_monitor, frame, imgsz)
 
 
 def run_sync(args, source) -> dict:
@@ -113,7 +114,7 @@ def run_sync(args, source) -> dict:
     processed = 0
 
     try:
-        warmup_sync(capture, model, zone_monitor, args.warmup)
+        warmup_sync(capture, model, zone_monitor, args.warmup, args.imgsz)
 
         start = time.monotonic()
 
@@ -127,18 +128,12 @@ def run_sync(args, source) -> dict:
             captured_at = time.monotonic()
             inference_start = time.monotonic()
 
-            age_at_start_ms.append(
-                (inference_start - captured_at) * 1000.0
-            )
+            age_at_start_ms.append((inference_start - captured_at) * 1000.0)
 
-            processing_ms.append(
-                process_frame(model, zone_monitor, frame)
-            )
+            processing_ms.append(process_frame(model, zone_monitor, frame, args.imgsz))
 
             finished_at = time.monotonic()
-            age_at_end_ms.append(
-                (finished_at - captured_at) * 1000.0
-            )
+            age_at_end_ms.append((finished_at - captured_at) * 1000.0)
             processed += 1
 
         elapsed = time.monotonic() - start
@@ -161,16 +156,13 @@ def run_sync(args, source) -> dict:
     }
 
 
-def warmup_async(camera, model, zone_monitor, seconds: float) -> int:
+def warmup_async(camera, model, zone_monitor, seconds: float, imgsz: int | None) -> int:
     """Warm up inference while camera capture runs independently."""
     deadline = time.monotonic() + seconds
     last_frame_id = -1
 
     while time.monotonic() < deadline:
-        packet = camera.read_latest(
-            after_frame_id=last_frame_id,
-            timeout=0.25,
-        )
+        packet = camera.read_latest(after_frame_id=last_frame_id, timeout=0.25)
 
         if packet is None:
             if camera.error is not None:
@@ -178,7 +170,7 @@ def warmup_async(camera, model, zone_monitor, seconds: float) -> int:
             continue
 
         last_frame_id = packet.frame_id
-        process_frame(model, zone_monitor, packet.frame)
+        process_frame(model, zone_monitor, packet.frame, imgsz)
 
     # Ignore any frames produced during warmup when timing begins.
     return camera.frames_captured - 1
@@ -187,11 +179,7 @@ def warmup_async(camera, model, zone_monitor, seconds: float) -> int:
 def run_async(args, source) -> dict:
     """Benchmark background capture with latest-frame inference."""
     model, zone_monitor = load_model_and_monitor()
-    camera = AsyncCamera(
-        source=source,
-        width=args.width,
-        height=args.height,
-    )
+    camera = AsyncCamera(source=source, width=args.width, height=args.height)
 
     processing_ms = []
     age_at_start_ms = []
@@ -203,7 +191,7 @@ def run_async(args, source) -> dict:
 
     try:
         last_frame_id = warmup_async(
-            camera, model, zone_monitor, args.warmup
+            camera, model, zone_monitor, args.warmup, args.imgsz
         )
 
         baseline_captured = camera.frames_captured
@@ -226,24 +214,16 @@ def run_async(args, source) -> dict:
                 last_frame_id = max(last_frame_id, packet.frame_id)
                 continue
 
-            frame_id_skips += max(
-                0, packet.frame_id - last_frame_id - 1
-            )
+            frame_id_skips += max(0, packet.frame_id - last_frame_id - 1)
             last_frame_id = packet.frame_id
 
             inference_start = time.monotonic()
-            age_at_start_ms.append(
-                (inference_start - packet.captured_at) * 1000.0
-            )
+            age_at_start_ms.append((inference_start - packet.captured_at) * 1000.0)
 
-            processing_ms.append(
-                process_frame(model, zone_monitor, packet.frame)
-            )
+            processing_ms.append(process_frame(model, zone_monitor, packet.frame, args.imgsz))
 
             finished_at = time.monotonic()
-            age_at_end_ms.append(
-                (finished_at - packet.captured_at) * 1000.0
-            )
+            age_at_end_ms.append((finished_at - packet.captured_at) * 1000.0)
             processed += 1
 
     finally:
@@ -285,19 +265,14 @@ def parse_source(value: str) -> int | str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Benchmark synchronous vs asynchronous EdgeSight."
-    )
+    parser = argparse.ArgumentParser(description="Benchmark synchronous vs asynchronous EdgeSight.")
     parser.add_argument("--duration", type=float, default=30.0)
     parser.add_argument("--warmup", type=float, default=5.0)
     parser.add_argument("--source", default="0")
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=480)
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=Path("runs/camera_benchmark/summary.json"),
-    )
+    parser.add_argument("--output", type=Path, default=Path("runs/camera_benchmark/summary.json"))
+    parser.add_argument("--imgsz", type=int, default=config.INFERENCE_IMAGE_SIZE, help="YOLO inference image size")
     args = parser.parse_args()
 
     if args.duration <= 0:
@@ -307,6 +282,9 @@ def main() -> None:
 
     if not MODEL_PATH.exists():
         raise FileNotFoundError(f"Model not found: {MODEL_PATH}")
+
+    if args.imgsz <= 0:
+        parser.error("--imgsz must be greater than zero")
 
     source = parse_source(args.source)
 
@@ -334,6 +312,7 @@ def main() -> None:
             "synchronous": synchronous,
             "asynchronous": asynchronous,
         },
+        "inference_image_size": args.imgsz,
     }
 
     sync_fps = synchronous["processed_fps"]
