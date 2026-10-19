@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .env
 *.onnx
+.pytest-tmp/
 
 build/
 third_party/
