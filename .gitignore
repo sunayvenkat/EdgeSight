@@ -12,7 +12,8 @@ third_party/
 
 *.pt
 runs/
-
+CLAUDE.md
+docs/roadmap.md
 datasets/rover_obstacles/raw/
 datasets/rover_obstacles/images/**/*.jpg
 datasets/rover_obstacles/images/**/*.jpeg
