@@ -99,3 +99,11 @@ Explicit thread configuration should be validated on the Raspberry Pi 5 rather t
 ## Next Steps
 
 Investigate thread tuning, graph optimizations, and C++ integration while continuing to verify prediction consistency.
+
+Status: completed.
+
+- Thread and graph-optimization tuning: presets and the recommended "default" preset (all cores, all graph optimizations, 11.2 ms direct-session median) are in `models/runtime_config.json`. Every preset's output was consistent with the reference.
+- C++ integration: native ONNX Runtime inference (`cpp/main.cpp`) reached 13.8–26.6 ms medians, and all three runs matched the Python reference output with a maximum absolute error of 0.0 (`runs/cpp/native_run1-3`).
+- Live-app threads: the app overrides the preset with 4 intra-op threads (`ONNX_INTRA_OP_THREADS` in `edgesight/config.py`). In the live app this gave a steadier p95 than the all-core preset (21.9 vs 26.7 ms) at 358% versus 1,283% process CPU; see `docs/raspberry_pi.md` (Desktop Reference).
+
+Remaining tuning on the Raspberry Pi 5 is listed in `docs/raspberry_pi.md` (Pi Measurement Plan).

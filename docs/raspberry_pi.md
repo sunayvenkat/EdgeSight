@@ -4,7 +4,7 @@
 
 ## Status
 
-Preparation only. Nothing in this document has been run on a Raspberry Pi yet. The hardware, camera, and display setup are still undecided (see Open Decisions).
+Preparation only. Nothing in this document has been run on a Raspberry Pi yet. The hardware has been chosen (see Hardware) but not yet purchased.
 
 ## Target Platform
 
@@ -66,6 +66,9 @@ python main.py
 
 # Over SSH or without a display: no video window, summary at the end
 python main.py --headless --duration 60
+
+# Record a demo while headless, then copy it to another machine to watch
+python main.py --headless --duration 60 --record demo.mp4
 ```
 
 `main.py` switches to headless mode automatically on Linux when no X11 or Wayland display is available. Other options:
@@ -73,6 +76,8 @@ python main.py --headless --duration 60
 - `--threads N`: ONNX Runtime intra-op threads (default 4, from `edgesight/config.py`)
 - `--backend pytorch`: use the original Ultralytics PyTorch path
 - `--camera N`: OpenCV camera index
+- `--video PATH`: process a recorded video file instead of a camera
+- `--record PATH`: save the annotated video to a new `.mp4` or `.avi` file. If the Pi processes slower than the camera, the file's frame rate is corrected to the measured processing rate so playback is real time.
 
 Each run prints processed FPS, median and p95 inference-plus-tracking time, and captured and dropped camera frames.
 
@@ -96,10 +101,28 @@ The mission target is at least 3 FPS on the Raspberry Pi.
 2. Compare `--threads 3` and `--threads 4`. The camera capture thread competes with ONNX Runtime for the Pi's four cores.
 3. Compare against `--backend pytorch` under the same conditions.
 4. Re-run `scripts/tune_onnx.py` presets on the Pi; the current `runtime_config.json` was tuned on the desktop CPU. This needs `models/selected.pt` and the validation images.
-5. Record temperature and throttling during sustained runs with `vcgencmd measure_temp` and `vcgencmd get_throttled`. The Pi 5 throttles under sustained load without cooling, so use the Active Cooler or equivalent for benchmarks.
+5. Benchmark the INT8 candidates from `docs/quantization.md` against FP32: `models/selected_int8_u8_no_head.onnx` (primary) and `models/selected_int8_s8_no_decode.onnx`. These are gitignored, so copy them or rebuild them with `scripts/quantize_onnx.py`. On the desktop, the s8 variants were 2.5–2.7× slower than FP32 because of x86 kernel coverage; ARM may differ. The app cannot load them yet, because `create_session()` accepts only the FP32 hash in `models/runtime_config.json`.
+6. Record temperature and throttling during sustained runs with `vcgencmd measure_temp` and `vcgencmd get_throttled`. The Pi 5 throttles under sustained load without cooling, so use the Active Cooler or equivalent for benchmarks.
 
-## Open Decisions
+## Hardware
 
-- **Camera.** A USB webcam works with the current OpenCV capture code. A Raspberry Pi Camera Module uses libcamera, which `cv2.VideoCapture` cannot read directly; it would need a Picamera2 capture path in `edgesight/async_camera.py`.
-- **Display.** Both a video window and headless mode are supported.
+Chosen 2026-10-22 for a tabletop deployment. The choices also allow the same Pi to be mounted on a small rover later.
+
+| Item | Choice | Reason |
+|---|---|---|
+| Board | Raspberry Pi 5, 8 GB recommended (4 GB sufficient) | The app's peak RSS on the desktop was about 450–530 MB; 8 GB leaves headroom for builds and future work |
+| Cooling | Official Active Cooler | Continuous inference loads all four cores; an uncooled Pi 5 throttles and would distort benchmarks |
+| Power | Official 27 W USB-C supply | With lower-rated supplies, the Pi 5 limits total USB current to 600 mA, which can make a USB webcam unreliable |
+| Storage | 64 GB or larger A2-class microSD card | Sufficient for this project; NVMe is not needed |
+| Camera | Existing USB webcam | Works with the current OpenCV capture code, so no changes are needed |
+| OS and access | Raspberry Pi OS Lite (64-bit) "Trixie", headless over SSH | Lighter than the desktop image; `main.py` runs headless, and `--record` captures demo video |
+| Accelerator | None | The mission targets CPU-only deployment |
+
+### Rover Stage (planned, after v1)
+
+- **Camera.** A Raspberry Pi Camera Module 3 is planned for the rover stage. It is lighter, mounts more easily, and connects by ribbon cable, so it is not subject to the USB current limit on battery power. It uses libcamera, which `cv2.VideoCapture` cannot read directly, so it needs a Picamera2 capture path alongside `edgesight/async_camera.py`. Picamera2 is installed with apt, so the venv must be created with `--system-site-packages`. The Pi 5 also needs its own smaller camera cable for this module.
+- **Power.** The battery will be chosen together with the chassis and motor driver.
+
+## Open Items
+
 - **Native C++ build.** `CMakeLists.txt` currently targets Windows x64 only. Building `cpp/main.cpp` on the Pi needs a Linux branch that links `libonnxruntime.so` from the ONNX Runtime aarch64 release.

@@ -81,4 +81,4 @@ This is a provisional engineering decision, not a claim of production-ready obst
 1. Repeat resolution benchmarks under comparable CPU conditions and compare the results.
 2. Evaluate on a larger, representative dataset, especially for debris.
 3. Validate detection and tracking on temporally ordered video before drawing conclusions about rover behavior.
-4. Record the final inference-size setting and benchmark methodology in the project documentation.
+4. Record the final inference-size setting and benchmark methodology in the project documentation. Recorded: the app currently runs at 640 (`INFERENCE_IMAGE_SIZE` in `edgesight/config.py`), and the exported ONNX model has a fixed 1 × 3 × 640 × 640 input (`models/onnx_manifest.json`), so changing the size for the ONNX backend requires a re-export. The setting remains the provisional default described under Decision; the methodology is under Experimental Setup.

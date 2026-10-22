@@ -82,7 +82,11 @@ Source: runs/benchmarks/pytorch_cpu_run1-3.json
 
 ## Next Steps
 
-- Export selected model to ONNX
-- Benchmark ONNX Runtime under matching settings
-- Measure latency and memory differences
-- Verify detection output consistency
+All four steps are complete; results are in
+docs/onnx_results.md.
+
+- [x] Export selected model to ONNX
+- [x] Benchmark ONNX Runtime under matching
+  settings
+- [x] Measure latency and memory differences
+- [x] Verify detection output consistency
