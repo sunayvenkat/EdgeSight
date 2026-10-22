@@ -7,10 +7,9 @@ import numpy as np
 import pytest
 
 import main
-from edgesight.async_camera import AsyncCamera, FramePacket
+from edgesight.sources import AsyncCamera, FramePacket, VideoFileSource
 from edgesight.events import ZoneMonitor
 from edgesight.tracker import TrackedObject
-from edgesight.video_source import VideoFileSource
 
 
 class FakeCamera:

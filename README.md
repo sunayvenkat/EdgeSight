@@ -126,16 +126,14 @@ The tests use synthetic frames, synthetic videos, and fake trackers, so they nee
 
 ```text
 main.py                  App entry point: arguments, frame loop, overlay, and run summary
-edgesight/
+edgesight/                (modules in pipeline order)
   config.py              Camera, model, ONNX Runtime, detection, tracker, and zone settings
-  async_camera.py        Background-thread camera capture with a latest-frame buffer
-  video_source.py        Frame-by-frame video file input with the same interface
-  onnx_detector.py       ONNX Runtime session, preprocessing, and output decoding
-  detector.py            Ultralytics PyTorch detector
+  sources.py             Frame sources: live camera (background thread, newest frame only) and video files (every frame, in order)
+  detector.py            Detection backends: Ultralytics PyTorch, and ONNX Runtime with its own preprocessing and decoding
   tracker.py             ByteTrack tracking for both backends, and box drawing
   events.py              Monitoring zone and ENTER/EXIT events
-  camera.py              Earlier synchronous camera stream
-scripts/                 Dataset checks, training, evaluation, model selection, ONNX export and tuning, benchmarks, profiling
+  recorder.py            Saving annotated video (--record)
+scripts/                 Dataset checks, training, evaluation, model selection, ONNX export and tuning, quantization, benchmarks, profiling
 tests/                   pytest suite
 cpp/main.cpp             Native C++ ONNX Runtime inference (built with CMakeLists.txt; Windows x64 only for now)
 models/                  Model metadata (*.json); model files are copied in, not committed

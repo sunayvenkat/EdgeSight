@@ -11,11 +11,10 @@ from pathlib import Path
 import cv2
 
 from edgesight import config
-from edgesight.async_camera import AsyncCamera
 from edgesight.events import ZoneMonitor
 from edgesight.recorder import CODECS, RecordingError, VideoRecorder, codec_for
+from edgesight.sources import AsyncCamera, VideoFileSource
 from edgesight.tracker import draw_tracks
-from edgesight.video_source import VideoFileSource
 
 
 def parse_args(argv=None):
@@ -64,7 +63,7 @@ def create_tracker(backend=None, threads=None):
     backend = config.INFERENCE_BACKEND if backend is None else backend
 
     if backend == "onnx":
-        from edgesight.onnx_detector import OnnxDetector, create_session
+        from edgesight.detector import OnnxDetector, create_session
         from edgesight.tracker import OnnxTracker
 
         session = create_session(intra_op_threads=config.ONNX_INTRA_OP_THREADS if threads is None else threads)

@@ -17,13 +17,45 @@ import numpy as np
 from ultralytics import YOLO
 
 from edgesight import config
-from edgesight.async_camera import AsyncCamera
 from edgesight.events import ZoneMonitor
+from edgesight.sources import AsyncCamera
 from edgesight.tracker import TrackedObject
-from scripts.async_camera_demo import convert_result
 
 
 MODEL_PATH = Path("models/selected.pt")
+
+
+def convert_result(result) -> list[TrackedObject]:
+    """Convert Ultralytics detections to EdgeSight tracked objects."""
+    objects = []
+    boxes = result.boxes
+
+    if boxes is None:
+        return objects
+
+    coordinates = boxes.xyxy.cpu().tolist()
+    classes = boxes.cls.cpu().tolist()
+    confidences = boxes.conf.cpu().tolist()
+
+    track_ids = (
+        boxes.id.int().cpu().tolist()
+        if boxes.id is not None
+        else [None] * len(coordinates)
+    )
+
+    for bbox, class_id, confidence, track_id in zip(
+        coordinates, classes, confidences, track_ids
+    ):
+        objects.append(
+            TrackedObject(
+                track_id=track_id,
+                label=result.names[int(class_id)],
+                confidence=float(confidence),
+                bbox=tuple(round(value) for value in bbox),
+            )
+        )
+
+    return objects
 
 
 def summarize_ms(values: list[float]) -> dict:

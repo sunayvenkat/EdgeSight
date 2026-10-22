@@ -183,7 +183,7 @@ def test_records_from_detector_output():
 def test_quantized_model_keeps_interface_and_metadata():
     import onnxruntime as ort
 
-    from edgesight.onnx_detector import OnnxDetector
+    from edgesight.detector import OnnxDetector
 
     source = {prop.key: prop.value for prop in onnx.load(str(FP32_PATH)).metadata_props}
     quantized = {prop.key: prop.value for prop in onnx.load(str(INT8_PATH)).metadata_props}

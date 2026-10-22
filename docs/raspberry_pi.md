@@ -120,7 +120,7 @@ Chosen 2026-10-22 for a tabletop deployment. The choices also allow the same Pi 
 
 ### Rover Stage (planned, after v1)
 
-- **Camera.** A Raspberry Pi Camera Module 3 is planned for the rover stage. It is lighter, mounts more easily, and connects by ribbon cable, so it is not subject to the USB current limit on battery power. It uses libcamera, which `cv2.VideoCapture` cannot read directly, so it needs a Picamera2 capture path alongside `edgesight/async_camera.py`. Picamera2 is installed with apt, so the venv must be created with `--system-site-packages`. The Pi 5 also needs its own smaller camera cable for this module.
+- **Camera.** A Raspberry Pi Camera Module 3 is planned for the rover stage. It is lighter, mounts more easily, and connects by ribbon cable, so it is not subject to the USB current limit on battery power. It uses libcamera, which `cv2.VideoCapture` cannot read directly, so it needs a Picamera2 capture source in `edgesight/sources.py`. Picamera2 is installed with apt, so the venv must be created with `--system-site-packages`. The Pi 5 also needs its own smaller camera cable for this module.
 - **Power.** The battery will be chosen together with the chassis and motor driver.
 
 ## Open Items

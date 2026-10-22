@@ -11,7 +11,7 @@ import onnxruntime as ort
 import psutil
 
 from edgesight.config import DETECTION_CONFIDENCE, NMS_IOU_THRESHOLD
-from edgesight.onnx_detector import OnnxDetector, preprocess, sha256_file
+from edgesight.detector import OnnxDetector, preprocess, sha256_file
 from scripts.benchmark_inference import IMAGE_DIR, load_images
 from scripts.compare_predictions import match_detections
 from scripts.evaluate_model import build_report
@@ -192,7 +192,7 @@ def run_latency(name, run, warmup, iterations):
             "execution_mode": "sequential",
             "graph_optimization": "all",
             "spinning": options.get_session_config_entry("session.intra_op.allow_spinning") == "1",
-            "preprocessing": "edgesight.onnx_detector.preprocess",
+            "preprocessing": "edgesight.detector.preprocess",
             "warmup": warmup,
             "iterations": iterations,
         },

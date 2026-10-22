@@ -15,7 +15,7 @@ import onnxruntime as ort
 from onnxruntime.quantization import (CalibrationDataReader, CalibrationMethod, QuantFormat, QuantType, quantize_static)
 from onnxruntime.quantization.shape_inference import quant_pre_process
 
-from edgesight.onnx_detector import preprocess, sha256_file
+from edgesight.detector import preprocess, sha256_file
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -280,7 +280,7 @@ def main():
             "activation_type": args.activation_type,
             "weight_type": "qint8",
             "calibrate_method": args.calibrate_method,
-            "preprocessing": "edgesight.onnx_detector.preprocess(frame, 640)",
+            "preprocessing": "edgesight.detector.preprocess(frame, 640)",
             "imgsz": IMAGE_SIZE,
         },
         "nodes_excluded": excluded,

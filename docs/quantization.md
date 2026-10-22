@@ -46,7 +46,7 @@ Quantization (`scripts/quantize_onnx.py`):
 - `onnxruntime.quantization.shape_inference.quant_pre_process` with defaults, then `quantize_static`
 - QDQ format, per-channel weights, MinMax calibration
 - Calibration: the 51 training-split images in `datasets/rover_obstacles/images/train`. Validation and test images were never used.
-- Calibration preprocessing: `edgesight.onnx_detector.preprocess(frame, 640)`, the same letterbox and normalization the app uses
+- Calibration preprocessing: `edgesight.detector.preprocess(frame, 640)` (in `edgesight/onnx_detector.py` when these models were built), the same letterbox and normalization the app uses
 - Output is deterministic: re-running all six builds reproduced byte-identical files.
 
 Accuracy (`scripts/evaluate_quantization.py --stage accuracy`):
@@ -64,7 +64,7 @@ Latency (`--stage latency`):
 
 - `benchmark_session` from `scripts/tune_onnx.py`: direct `session.run` timing only (no preprocessing, decode, or NMS)
 - Session options: 4 intra-op threads, 1 inter-op thread, sequential, all graph optimizations, spinning on (the `intra4` preset, which matches the app)
-- Inputs: the 21 validation images preprocessed with `edgesight.onnx_detector.preprocess`
+- Inputs: the 21 validation images preprocessed with `edgesight.detector.preprocess`
 - 10 warm-up and 100 timed calls per run, 3 runs per model, one process per run, run sequentially and interleaved across models
 
 Reproduce:
