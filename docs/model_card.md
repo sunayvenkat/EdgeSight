@@ -29,7 +29,7 @@ obstacles for a robotic vision application.
 
 ## Selected Experiment
 
-- Experiment: [pilot_v1 or pilot_v2_data]
+- Experiment: pilot_v2_data
 - Selection metric: Validation mAP50-95
 - Validation mAP50: 0.6261
 - Validation mAP50-95: 0.3755
@@ -47,11 +47,15 @@ obstacles for a robotic vision application.
 ## Reproducibility
 
 - Model checkpoint SHA-256:
+  8ef59097dee4889acc8fd327b48fb64547b7f4ba372740fddee6161099a23b9f
 - Python version: 3.14.7
 - PyTorch version: 2.14.1+cpu
 - Ultralytics version: 8.4.175
-- Training configuration: 
+- Training configuration:
+  runs/train/pilot_v2_data/args.yaml
 - Dataset split fingerprint:
+  fd3234a51aafdf6611e982714c8b69f70946fa46c173dc42ee8696a34ab49ffc
+  (SHA-256 of docs/split_lock.json)
 
 ## Limitations
 

@@ -12,9 +12,9 @@ ONNX and C++ optimizations.
 ## Hardware
 
 - CPU: Intel(R) Core(TM) Ultra 9 285H
-- Operating system: 
+- Operating system: Windows 11 (10.0.26200)
 - RAM: 32 GB
-- Python version: 3.14.1
+- Python version: 3.14.7
 - PyTorch version: 2.14.1+cpu
 - Ultralytics version: 8.4.175
 
@@ -22,6 +22,7 @@ ONNX and C++ optimizations.
 
 - Checkpoint: models/selected.pt
 - Model SHA-256:
+  8ef59097dee4889acc8fd327b48fb64547b7f4ba372740fddee6161099a23b9f
 - Backend: PyTorch
 - Execution device: CPU
 - Image size: 640
@@ -52,11 +53,24 @@ associated preprocessing/postprocessing.
 
 ## Observations
 
-Record whether measurements are stable
-between runs.
+Measurements were stable between runs.
+Median latency ranged from 40.21 to 42.09 ms
+(average 40.96 ms), and throughput from
+22.7 to 24.6 FPS (average 24.0 FPS).
 
-Identify any large timing variations or
-unexpected memory usage.
+Run 2 had the widest tail (P95 52.87 ms versus
+45.14 and 46.36 ms) and the lowest throughput.
+Its cause was not identified.
+
+Model inference dominated each prediction
+(36.3–39.4 ms mean per run). Preprocessing
+took about 2.1 ms and postprocessing under
+0.8 ms.
+
+Peak sampled RSS was about 453 MB in every
+run, with no sign of memory growth.
+
+Source: runs/benchmarks/pytorch_cpu_run1-3.json
 
 ## Limitations
 

@@ -17,12 +17,24 @@
 
 ## Results
 
-- Epochs completed:
-- Best validation mAP50:
-- Best validation mAP50-95:
-- Precision:
-- Recall:
-- Training observations:
+- Epochs completed: 30 of 30 (early stopping,
+  patience 10, was not triggered)
+- Best validation mAP50: 0.6520 (epoch 21)
+- Best validation mAP50-95: 0.4686 (epoch 21)
+- Precision: 0.7851 (epoch 21)
+- Recall: 0.5714 (epoch 21)
+- Training observations: Validation mAP50-95
+  rose quickly to 0.414 by epoch 10, peaked at
+  epoch 21, and finished at 0.453 at epoch 30.
+  Validation box loss reached its minimum
+  (1.434) at epoch 9 and drifted up to 1.600 by
+  epoch 30 while training box loss kept falling,
+  a mild sign of overfitting. Validation
+  classification loss kept declining
+  (9.69 to 4.45). With only 6 validation images,
+  metrics moved in large steps between epochs.
+
+Source: runs/train/pilot_v1/results.csv
 
 ## Limitations
 
