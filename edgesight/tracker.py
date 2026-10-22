@@ -3,6 +3,11 @@
 from dataclasses import dataclass
 
 import cv2
+import numpy as np
+from ultralytics.engine.results import Boxes
+from ultralytics.trackers.byte_tracker import BYTETracker
+from ultralytics.utils import YAML, IterableSimpleNamespace
+from ultralytics.utils.checks import check_yaml
 
 from edgesight.config import INFERENCE_IMAGE_SIZE, TRACKER_CONFIG
 
@@ -47,6 +52,42 @@ class ObjectTracker:
             tracked_objects.append(TrackedObject(track_id=track_id, label=result.names[class_id], confidence=confidence, bbox=(x1, y1, x2, y2)))
 
         return tracked_objects
+
+class OnnxTracker:
+    # Runs ByteTrack on detections from an OnnxDetector
+
+    def __init__(self, detector, tracker_config=TRACKER_CONFIG):
+        self.detector = detector
+
+        settings = IterableSimpleNamespace(**YAML.load(check_yaml(tracker_config)))
+
+        if settings.tracker_type != "bytetrack":
+            raise ValueError("OnnxTracker only supports ByteTrack")
+
+        self.tracker = BYTETracker(args=settings)
+
+    def track(self, frame):
+        # Detect and associate objects across frames
+
+        boxes, scores, class_ids = self.detector.infer(frame)
+
+        data = np.column_stack([boxes, scores, class_ids]).astype(np.float32).reshape(-1, 6)
+
+        tracks = self.tracker.update(Boxes(data, frame.shape[:2]), frame)
+
+        # Mirror Ultralytics' model.track(): hide new tracks until confirmed,
+        # and fall back to untracked detections when nothing is being tracked
+        if len(tracks) == 0:
+            if any(not track.is_activated for track in self.tracker.tracked_stracks):
+                return []
+
+            return [self._make_object(None, row[:4], row[4], row[5]) for row in data]
+
+        # Track rows are [x1, y1, x2, y2, track_id, score, class_id, index]
+        return [self._make_object(int(row[4]), row[:4], row[5], row[6]) for row in tracks]
+
+    def _make_object(self, track_id, bbox, confidence, class_id):
+        return TrackedObject(track_id=track_id, label=self.detector.names[int(class_id)], confidence=float(confidence), bbox=tuple(int(value) for value in bbox))
 
 def draw_tracks(frame, objects):
     # Draw tracked objects and their IDs

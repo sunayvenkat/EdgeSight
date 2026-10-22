@@ -102,10 +102,11 @@ class LatestFrameBuffer:
 class AsyncCamera:
     """Capture camera frames on a dedicated background thread."""
 
-    def __init__(self, source: int | str = 0, width: int | None = 640, height: int | None = 480) -> None:
+    def __init__(self, source: int | str = 0, width: int | None = 640, height: int | None = 480, fps: int | None = None) -> None:
         self.source = source
         self.width = width
         self.height = height
+        self.fps = fps
 
         self.buffer = LatestFrameBuffer()
         self._stop_event = threading.Event()
@@ -148,6 +149,9 @@ class AsyncCamera:
 
             if self.height is not None:
                 capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+
+            if self.fps is not None:
+                capture.set(cv2.CAP_PROP_FPS, self.fps)
 
             self._opened = capture.isOpened()
             self._started_event.set()

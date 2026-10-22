@@ -21,8 +21,6 @@ datasets/rover_obstacles/labels/**/*.txt
 
 
 # Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[codz]
 *$py.class
 
 # C extensions
