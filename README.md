@@ -68,12 +68,13 @@ The dataset images under `datasets/` and the saved results under `runs/` are als
 ## Running
 
 ```bash
-python main.py [--backend onnx|pytorch] [--camera N | --video PATH] [--threads N] [--headless] [--duration SECONDS] [--record PATH]
+python main.py [--backend onnx|pytorch] [--model PATH] [--camera N | --video PATH] [--threads N] [--headless] [--duration SECONDS] [--record PATH]
 ```
 
 | Option | Default | Description |
 |---|---|---|
 | `--backend onnx\|pytorch` | `onnx` | Inference backend. `onnx` uses `models/selected.onnx` with the tuned ONNX Runtime session; `pytorch` uses `models/selected.pt` through Ultralytics. |
+| `--model PATH` | released model | Run a candidate model instead: a `.onnx` file for `onnx` or a `.pt` file for `pytorch`. Candidates reuse the tuned runtime settings without the release hash check. |
 | `--camera N` | `0` | OpenCV camera index. Cannot be combined with `--video`. |
 | `--video PATH` | none | Process a recorded video file instead of a camera. Cannot be combined with `--camera`. |
 | `--threads N` | `4` | ONNX Runtime intra-op threads (`ONNX_INTRA_OP_THREADS` in `edgesight/config.py`). `0` lets ONNX Runtime use all cores. |
@@ -154,6 +155,8 @@ docs/                    Project documentation and results
 | [onnx_results.md](docs/onnx_results.md) | ONNX export, prediction consistency, runtime tuning, and native C++ results |
 | [inference_optimization.md](docs/inference_optimization.md) | Inference size 416 vs 512 vs 640: accuracy and camera-pipeline performance |
 | [quantization.md](docs/quantization.md) | INT8 quantization variants: accuracy, detection consistency, and latency against FP32 |
+| [video_evaluation.md](docs/video_evaluation.md) | Detection, tracking, and false alarms on real recorded video (`scripts/analyze_video.py`) |
+| [retraining.md](docs/retraining.md) | Retraining on real footage: class definitions, labeling rules, v2 success criteria, and the step-by-step workflow |
 | [raspberry_pi.md](docs/raspberry_pi.md) | Raspberry Pi 5 setup, desktop reference numbers, and the Pi measurement plan |
 
 `docs/split_lock.json` records the locked train/validation/test split.

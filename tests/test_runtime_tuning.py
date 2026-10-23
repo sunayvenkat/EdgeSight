@@ -100,3 +100,10 @@ def test_select_fastest_consistent_preset():
     }
 
     assert choose_best(results) == "intra4"
+
+
+def test_tuning_file_names_keep_v1_names():
+    from scripts.tune_onnx import tuning_file_name
+
+    assert tuning_file_name("intra4", 2) == "tuning_intra4_run2.json"
+    assert tuning_file_name("intra4", 2, "v2") == "tuning_v2_intra4_run2.json"

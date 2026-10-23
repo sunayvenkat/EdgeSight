@@ -12,6 +12,7 @@ from scripts.train_model import (
     DATASET_ROOT,
     RUNS_ROOT,
     create_training_config,
+    training_config_path,
 )
 from scripts.validate_dataset import validate_dataset
 
@@ -32,14 +33,14 @@ def resolve_checkpoint(checkpoint_path):
     return checkpoint
 
 
-def build_report(metrics, checkpoint, image_count):
+def build_report(metrics, checkpoint, image_count, split="val", dataset=None, imgsz=None):
     # Convert Ultralytics metrics to a JSON-ready report
 
     box = metrics.box
 
     report = {
         "checkpoint": str(checkpoint),
-        "split": "val",
+        "split": split,
         "images": image_count,
         "precision": round(float(box.mp), 4),
         "recall": round(float(box.mr), 4),
@@ -47,6 +48,13 @@ def build_report(metrics, checkpoint, image_count):
         "mAP50_95": round(float(box.map), 4),
         "per_class": [],
     }
+
+    # Recorded so model selection can refuse to compare unlike evaluations
+    if dataset is not None:
+        report["dataset"] = str(dataset)
+
+    if imgsz is not None:
+        report["imgsz"] = imgsz
 
     for index, class_id in enumerate(box.ap_class_index):
         class_id = int(class_id)
@@ -65,12 +73,13 @@ def build_report(metrics, checkpoint, image_count):
     return report
 
 
-def evaluate_model(checkpoint_path, run_name):
+def evaluate_model(checkpoint_path, run_name, dataset_root=DATASET_ROOT, imgsz=512, split="val"):
     # Evaluates the trained model on the images
 
     checkpoint = resolve_checkpoint(checkpoint_path)
+    dataset_root = Path(dataset_root)
 
-    errors, counts = validate_dataset(DATASET_ROOT, require_images=True)
+    errors, counts = validate_dataset(dataset_root, require_images=True)
 
     if errors:
         raise ValueError("Dataset validation failed:\n" + "\n".join(errors))
@@ -82,17 +91,17 @@ def evaluate_model(checkpoint_path, run_name):
         raise FileExistsError(f"Evaluation already exists: {output_dir}\n" "Choose a new --name to keep results separate.")
 
     # Reuse the absolute-path configuration.
-    config_path = create_training_config(DATASET_ROOT, RUNS_ROOT / "configs" / "rover_training.yaml")
+    config_path = create_training_config(dataset_root, training_config_path(dataset_root))
 
     print("Loading trained model...")
     model = YOLO(str(checkpoint))
 
-    print("Evaluating validation dataset...")
+    print(f"Evaluating {split} split of {dataset_root.name} at image size {imgsz}...")
 
     metrics = model.val(
         data=str(config_path),
-        split="val",
-        imgsz=512,
+        split=split,
+        imgsz=imgsz,
         batch=4,
         device="cpu",
         workers=0,
@@ -104,7 +113,7 @@ def evaluate_model(checkpoint_path, run_name):
         exist_ok=False,
     )
 
-    report = build_report(metrics, checkpoint, counts["val"])
+    report = build_report(metrics, checkpoint, counts[split], split=split, dataset=dataset_root.name, imgsz=imgsz)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -138,10 +147,15 @@ def main():
     parser.add_argument("--weights", default="runs/train/pilot_v1/weights/best.pt")
 
     parser.add_argument("--name", default="pilot_v1_val")
+    parser.add_argument("--dataset", type=Path, default=DATASET_ROOT, help="Dataset folder (default: datasets/rover_obstacles, the v1 data)")
+    parser.add_argument("--imgsz", type=int, default=512, help="Evaluation image size (default: %(default)s, as used for v1; v2 uses 640)")
+    parser.add_argument("--split", choices=["val", "test"], default="val")
 
     args = parser.parse_args()
 
-    evaluate_model(checkpoint_path=args.weights, run_name=args.name)
+    dataset = args.dataset if args.dataset.is_absolute() else PROJECT_ROOT / args.dataset
+
+    evaluate_model(checkpoint_path=args.weights, run_name=args.name, dataset_root=dataset, imgsz=args.imgsz, split=args.split)
 
 
 if __name__ == "__main__":

@@ -272,3 +272,12 @@ def test_matches_ultralytics_onnx_predictions():
         assert distance.min(axis=1).max() < 1.5, path.name
         assert np.array_equal(class_ids[nearest], result.boxes.cls.numpy().astype(int)), path.name
         assert np.allclose(scores[nearest], result.boxes.conf.numpy(), atol=1e-4), path.name
+
+
+def test_create_session_can_skip_hash_for_candidates(tmp_path):
+    config = tmp_path / "runtime_config.json"
+    config.write_text(json.dumps({"onnx_sha256": "0" * 64, "configuration": {}}), encoding="utf-8")
+
+    # The hash check is skipped, so the failure comes later, from the missing settings
+    with pytest.raises(KeyError):
+        create_session(tmp_path / "candidate.onnx", config, verify_hash=False)

@@ -56,3 +56,10 @@ def test_training_config_missing_yaml(tmp_path):
 
     with pytest.raises(FileNotFoundError):
         create_training_config(dataset_root, output)
+
+
+def test_training_config_path_keeps_v1_name():
+    from scripts.train_model import DATASET_ROOT, RUNS_ROOT, training_config_path
+
+    assert training_config_path(DATASET_ROOT) == RUNS_ROOT / "configs" / "rover_training.yaml"
+    assert training_config_path(DATASET_ROOT.parent / "rover_obstacles_v2") == RUNS_ROOT / "configs" / "rover_obstacles_v2_training.yaml"

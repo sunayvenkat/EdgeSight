@@ -9,6 +9,7 @@ __pycache__/
 
 build/
 third_party/
+clips/
 
 *.pt
 runs/
@@ -19,6 +20,8 @@ datasets/rover_obstacles/images/**/*.jpg
 datasets/rover_obstacles/images/**/*.jpeg
 datasets/rover_obstacles/images/**/*.png
 datasets/rover_obstacles/labels/**/*.txt
+datasets/rover_obstacles_v2/images/
+datasets/rover_obstacles_v2/labels/
 
 
 # Byte-compiled / optimized / DLL files

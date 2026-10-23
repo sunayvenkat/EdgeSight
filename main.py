@@ -21,6 +21,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Run EdgeSight live object detection and tracking.")
 
     parser.add_argument("--backend", choices=["onnx", "pytorch"], default=config.INFERENCE_BACKEND, help="Inference backend (default: %(default)s)")
+    parser.add_argument("--model", default=None, metavar="PATH", help="Run a candidate model instead of the released one (.onnx for --backend onnx, .pt for --backend pytorch)")
 
     # Default None so an explicit --camera always conflicts with --video
     source = parser.add_mutually_exclusive_group()
@@ -40,6 +41,15 @@ def parse_args(argv=None):
     if args.duration is not None and args.duration <= 0:
         parser.error("--duration must be positive")
 
+    if args.model is not None:
+        expected_suffix = ".onnx" if args.backend == "onnx" else ".pt"
+
+        if Path(args.model).suffix.lower() != expected_suffix:
+            parser.error(f"--model: the {args.backend} backend needs a {expected_suffix} file")
+
+        if not Path(args.model).is_file():
+            parser.error(f"--model: {args.model} not found")
+
     if args.record is not None:
         # Check the output path before loading the model, so a typo doesn't waste a run
         try:
@@ -58,15 +68,20 @@ def parse_args(argv=None):
     return args
 
 
-def create_tracker(backend=None, threads=None):
-    # Build the detector and tracker for the configured backend
+def create_tracker(backend=None, threads=None, model=None):
+    # Build the detector and tracker for the configured backend; model overrides the released model
     backend = config.INFERENCE_BACKEND if backend is None else backend
 
     if backend == "onnx":
         from edgesight.detector import OnnxDetector, create_session
         from edgesight.tracker import OnnxTracker
 
-        session = create_session(intra_op_threads=config.ONNX_INTRA_OP_THREADS if threads is None else threads)
+        intra_op_threads = config.ONNX_INTRA_OP_THREADS if threads is None else threads
+
+        if model is None:
+            session = create_session(intra_op_threads=intra_op_threads)
+        else:
+            session = create_session(model_path=model, intra_op_threads=intra_op_threads, verify_hash=False)
 
         return OnnxTracker(OnnxDetector(session=session))
 
@@ -74,7 +89,7 @@ def create_tracker(backend=None, threads=None):
         from edgesight.detector import ObjectDetector
         from edgesight.tracker import ObjectTracker
 
-        return ObjectTracker(ObjectDetector())
+        return ObjectTracker(ObjectDetector() if model is None else ObjectDetector(model_path=model))
 
     raise ValueError(f"Unknown inference backend: {backend!r}")
 
@@ -228,9 +243,9 @@ def main(argv=None):
     summary = None
 
     try:
-        print(f"Loading EdgeSight detection model ({args.backend})... ")
+        print(f"Loading EdgeSight detection model ({args.backend}{', candidate ' + args.model if args.model else ''})... ")
 
-        tracker = create_tracker(args.backend, args.threads)
+        tracker = create_tracker(args.backend, args.threads, model=args.model)
         zone = ZoneMonitor()
 
         print("EdgeSight detection model loaded successfully")

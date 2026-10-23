@@ -33,6 +33,13 @@ PRESETS = {
 }
 
 
+def tuning_file_name(preset, run, tag=None):
+    """Result file name; untagged names are the original v1 tuning runs."""
+    prefix = "tuning_" if tag is None else f"tuning_{tag}_"
+
+    return f"{prefix}{preset}_run{run}.json"
+
+
 def make_options(preset):
     """Create explicitly configured ONNX Runtime options."""
 
@@ -172,13 +179,14 @@ def main():
     parser.add_argument("--run", type=int, default=1)
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--iterations", type=int, default=100)
+    parser.add_argument("--tag", default=None, help="Prefix for a new release's result files, e.g. v2 (default: v1 file names)")
 
     args = parser.parse_args()
 
     if (args.run < 0 or args.warmup < 0 or args.iterations < 2):
         parser.error("Invalid benchmark parameters")
 
-    output_path = OUTPUT_ROOT / (f"tuning_{args.preset}_run{args.run}.json")
+    output_path = OUTPUT_ROOT / tuning_file_name(args.preset, args.run, args.tag)
 
     if output_path.exists():
         raise FileExistsError(output_path)

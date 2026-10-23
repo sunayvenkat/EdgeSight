@@ -89,12 +89,18 @@ def sha256_file(path) -> str:
     return digest.hexdigest()
 
 
-def create_session(model_path=ONNX_MODEL_PATH, runtime_config_path=RUNTIME_CONFIG_PATH, intra_op_threads=ONNX_INTRA_OP_THREADS) -> ort.InferenceSession:
-    """Create a CPU session using the tuned settings in runtime_config.json."""
+def create_session(model_path=ONNX_MODEL_PATH, runtime_config_path=RUNTIME_CONFIG_PATH, intra_op_threads=ONNX_INTRA_OP_THREADS, verify_hash=True) -> ort.InferenceSession:
+    """
+    Create a CPU session using the tuned settings in runtime_config.json.
+
+    The released model must match the hash the settings were tuned for.
+    Candidate models (retraining, INT8 variants) pass verify_hash=False to
+    reuse the same thread and graph settings without that check.
+    """
     runtime = json.loads(Path(runtime_config_path).read_text(encoding="utf-8"))
 
-    if runtime["onnx_sha256"] != sha256_file(model_path):
-        raise ValueError("runtime_config.json was tuned for a different ONNX file. Re-run scripts/tune_onnx.py.")
+    if verify_hash and runtime["onnx_sha256"] != sha256_file(model_path):
+        raise ValueError("runtime_config.json was tuned for a different ONNX file. Re-run scripts/tune_onnx.py, or use --model to run a candidate model.")
 
     settings = runtime["configuration"]
     threads = settings["intra_op_threads"] if intra_op_threads is None else intra_op_threads

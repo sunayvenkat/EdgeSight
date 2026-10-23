@@ -143,7 +143,7 @@ def test_headless_run_processes_every_video_frame(tmp_path):
 
 
 def test_main_runs_video_to_end(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(main, "create_tracker", lambda backend, threads: FakeTracker())
+    monkeypatch.setattr(main, "create_tracker", lambda backend, threads, model=None: FakeTracker())
 
     main.main(["--video", str(write_video(tmp_path / "clip.avi", 4)), "--headless"])
 
@@ -155,7 +155,7 @@ def test_main_runs_video_to_end(tmp_path, monkeypatch, capsys):
 
 
 def test_main_reports_missing_video(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(main, "create_tracker", lambda backend, threads: FakeTracker())
+    monkeypatch.setattr(main, "create_tracker", lambda backend, threads, model=None: FakeTracker())
 
     main.main(["--video", str(tmp_path / "missing.avi"), "--headless"])
 
@@ -204,7 +204,7 @@ def test_headless_run_records_annotated_frames():
 
 
 def test_main_records_video_to_file(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(main, "create_tracker", lambda backend, threads: FakeTracker())
+    monkeypatch.setattr(main, "create_tracker", lambda backend, threads, model=None: FakeTracker())
 
     output = tmp_path / "annotated.avi"
 
@@ -218,3 +218,35 @@ def test_main_records_video_to_file(tmp_path, monkeypatch, capsys):
     assert capture.get(cv2.CAP_PROP_FRAME_COUNT) == 5
     assert capture.get(cv2.CAP_PROP_FPS) == pytest.approx(30.0, rel=0.01)
     capture.release()
+
+
+@pytest.mark.parametrize("argv", [["--model", "candidate.pt"], ["--backend", "pytorch", "--model", "candidate.onnx"]])
+def test_model_must_match_backend(tmp_path, argv):
+    argv = [str(tmp_path / value) if value.startswith("candidate") else value for value in argv]
+
+    for value in argv:
+        if value.startswith(str(tmp_path)):
+            open(value, "wb").close()
+
+    with pytest.raises(SystemExit):
+        main.parse_args(argv)
+
+
+def test_model_must_exist(tmp_path):
+    with pytest.raises(SystemExit):
+        main.parse_args(["--model", str(tmp_path / "missing.onnx")])
+
+
+def test_candidate_model_skips_release_hash_check(tmp_path, monkeypatch):
+    calls = {}
+
+    def fake_create_session(**kwargs):
+        calls.update(kwargs)
+        return "session"
+
+    monkeypatch.setattr("edgesight.detector.create_session", fake_create_session)
+    monkeypatch.setattr("edgesight.detector.OnnxDetector", lambda session: session)
+    monkeypatch.setattr("edgesight.tracker.OnnxTracker", lambda detector: ("tracker", detector))
+
+    assert main.create_tracker("onnx", 2, model="candidate.onnx") == ("tracker", "session")
+    assert calls == {"model_path": "candidate.onnx", "intra_op_threads": 2, "verify_hash": False}

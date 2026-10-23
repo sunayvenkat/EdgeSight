@@ -1,10 +1,12 @@
 
 
 
+import argparse
 import json
 import statistics
 
 from scripts.benchmark_inference import (OUTPUT_ROOT, PROJECT_ROOT)
+from scripts.tune_onnx import tuning_file_name
 
 PRESETS = ("default", "intra1", "intra2", "intra4", "intra4_nospin", "intra4_basic")
 
@@ -24,7 +26,7 @@ def choose_best(results):
     return min(eligible, key=lambda item: (item[1]["median_ms"], item[1]["p95_ms"], item[0] != "default"))[0]
 
 
-def load_reports():
+def load_reports(tag=None):
     """Load and verify three runs per preset."""
 
     reports = {}
@@ -33,7 +35,7 @@ def load_reports():
         runs = []
 
         for number in (1, 2, 3):
-            path = OUTPUT_ROOT / (f"tuning_{preset}_run{number}.json")
+            path = OUTPUT_ROOT / tuning_file_name(preset, number, tag)
 
             data = json.loads(path.read_text(encoding="utf-8"))
 
@@ -113,7 +115,11 @@ def summarize_reports(reports):
 
 
 def main():
-    reports = load_reports()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--tag", default=None, help="Tag used with scripts/tune_onnx.py --tag (default: v1 file names)")
+    args = parser.parse_args()
+
+    reports = load_reports(args.tag)
     results = summarize_reports(reports)
 
     winner = choose_best(results)

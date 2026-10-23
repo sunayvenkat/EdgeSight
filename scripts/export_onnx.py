@@ -1,5 +1,6 @@
 
 
+import argparse
 import json
 from pathlib import Path
 
@@ -7,27 +8,28 @@ import onnx
 import onnxruntime as ort
 from ultralytics import YOLO
 
-from scripts.benchmark_inference import (MODEL_PATH, verify_model, sha256_file)
+from scripts.benchmark_inference import (MODEL_PATH, PROJECT_ROOT, verify_model, sha256_file)
 
 ONNX_PATH = MODEL_PATH.with_suffix(".onnx")
 MANIFEST_PATH = MODEL_PATH.parent / ("onnx_manifest.json")
 
-def export_onnx():
-    # Export and validate the selected model
-    source_hash = verify_model()
+def export_checkpoint(weights_path):
+    # Export a checkpoint to a fixed-shape ONNX file beside it, then validate the graph
+    weights_path = Path(weights_path)
+    onnx_path = weights_path.with_suffix(".onnx")
 
-    if ONNX_PATH.exists():
-        raise FileExistsError(f"{ONNX_PATH} already exists.")
+    if onnx_path.exists():
+        raise FileExistsError(f"{onnx_path} already exists.")
 
-    print("Loading selected PyTorch checkpoint... ")
+    print(f"Loading {weights_path}... ")
 
-    model = YOLO(str(MODEL_PATH))
+    model = YOLO(str(weights_path))
 
     print("Exporting to ONNX... ")
 
     exported = Path(model.export(format="onnx", imgsz=640, batch=1, dynamic=False, simplify=True, device="cpu")).resolve()
 
-    if exported != ONNX_PATH.resolve():
+    if exported != onnx_path.resolve():
         raise RuntimeError(f"Unexpected export location: {exported}")
 
     print("Validating ONNX graph... ")
@@ -40,6 +42,14 @@ def export_onnx():
 
     if input_info.shape != [1, 3, 640, 640]:
         raise ValueError(f"Unexpected input shape: {input_info.shape}")
+
+    return exported, session, input_info
+
+def export_onnx():
+    # Export and validate the selected model
+    source_hash = verify_model()
+
+    exported, session, input_info = export_checkpoint(MODEL_PATH)
 
     manifest = {
         "source_checkpoint": str(MODEL_PATH),
@@ -65,9 +75,29 @@ def export_onnx():
     print(f"Providers: {session.get_providers()}")
     print(f"Manifest: {MANIFEST_PATH}")
 
+def main():
+    parser = argparse.ArgumentParser(description="Export the released model (default) or a candidate checkpoint to ONNX.")
+
+    parser.add_argument("--weights", type=Path, default=None, help="Candidate checkpoint, e.g. runs/train/<name>/weights/best.pt; exported beside it, release files untouched")
+
+    args = parser.parse_args()
+
+    if args.weights is None:
+        export_onnx()
+        return
+
+    weights = args.weights if args.weights.is_absolute() else PROJECT_ROOT / args.weights
+
+    if not weights.is_file():
+        parser.error(f"Checkpoint not found: {weights}")
+
+    exported, _, input_info = export_checkpoint(weights)
+
+    print("\nCandidate ONNX export successful!")
+    print(f"Model: {exported}")
+    print(f"Input shape: {input_info.shape}")
+    print(f"Test it with: python -m scripts.analyze_video <clip> --expect <class> --model {exported}")
+
 
 if __name__ == "__main__":
-    export_onnx()
-
-
-
+    main()

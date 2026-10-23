@@ -38,9 +38,18 @@ def create_training_config(dataset_root, output_path):
 
     return output_path
 
-def train_model(epochs, imgsz, batch, device, name):
+def training_config_path(dataset_root):
+    # The v1 dataset keeps its original config name; other datasets are named after their folder
+    dataset_root = Path(dataset_root)
+
+    if dataset_root.resolve() == DATASET_ROOT.resolve():
+        return RUNS_ROOT / "configs" / "rover_training.yaml"
+
+    return RUNS_ROOT / "configs" / f"{dataset_root.name}_training.yaml"
+
+def train_model(epochs, imgsz, batch, device, name, dataset_root=DATASET_ROOT, seed=42):
     # Validate the dataset and fine-tune YOLO
-    errors, counts = validate_dataset(DATASET_ROOT, require_images=True)
+    errors, counts = validate_dataset(dataset_root, require_images=True)
 
     if errors:
         print("Dataset validation failed!")
@@ -53,7 +62,7 @@ def train_model(epochs, imgsz, batch, device, name):
     print("Dataset validated successfully.")
     print("Images:", counts)
 
-    training_yaml = create_training_config(DATASET_ROOT, RUNS_ROOT / "configs" / "rover_training.yaml")
+    training_yaml = create_training_config(dataset_root, training_config_path(dataset_root))
 
     print("Loading pretrained YOLO26n model... ")
 
@@ -68,7 +77,7 @@ def train_model(epochs, imgsz, batch, device, name):
         batch=batch,
         device=device,
         workers=0,
-        seed=42,
+        seed=seed,
         optimizer="AdamW",
         lr0=0.001,
         mosaic=0.5,
@@ -94,6 +103,8 @@ def main():
     parser.add_argument("--batch", type=int, default=4)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--name", default="pilot_v1")
+    parser.add_argument("--dataset", type=Path, default=DATASET_ROOT, help="Dataset folder (default: datasets/rover_obstacles, the v1 data)")
+    parser.add_argument("--seed", type=int, default=42)
 
     args = parser.parse_args()
 
@@ -105,7 +116,9 @@ def main():
         imgsz=args.imgsz,
         batch=args.batch,
         device=args.device,
-        name=args.name
+        name=args.name,
+        dataset_root=args.dataset if args.dataset.is_absolute() else PROJECT_ROOT / args.dataset,
+        seed=args.seed,
     )
 
 if __name__ == "__main__":
