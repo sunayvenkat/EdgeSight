@@ -84,8 +84,8 @@ def select_frames(candidates, min_sharpness_ratio, min_change):
     return kept, skipped
 
 
-def sample_clip(path: Path, every: int):
-    """Read every Nth frame; return (frame_index, sharpness, thumbnail) candidates and the clip's properties."""
+def sample_clip(path: Path, every: int, end_frame: int | None = None):
+    """Read every Nth frame before end_frame; return (frame_index, sharpness, thumbnail) candidates and the clip's properties."""
     capture = cv2.VideoCapture(str(path))
 
     if not capture.isOpened():
@@ -101,6 +101,10 @@ def sample_clip(path: Path, every: int):
             success = capture.grab()
 
             if not success:
+                break
+
+            if end_frame is not None and frame_index >= end_frame:
+                frame_index = int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) or frame_index
                 break
 
             if frame_index % every == 0:
@@ -158,6 +162,7 @@ def main():
     parser.add_argument("--max-side", type=int, default=1280, help="Resize so the longest side is at most this many pixels")
     parser.add_argument("--min-sharpness-ratio", type=float, default=0.5, help="Skip frames sharper than less than this fraction of the clip's median")
     parser.add_argument("--min-change", type=float, default=4.0, help="Skip frames that differ from the last kept frame by less than this (0-255)")
+    parser.add_argument("--end", action="append", default=[], metavar="CLIP:FRAME", help="Use only frames before FRAME from CLIP (its file name without extension), e.g. to cut out a part filmed at a test location. Repeatable.")
 
     args = parser.parse_args()
 
@@ -168,6 +173,16 @@ def main():
 
     if len(set(stems)) != len(stems):
         parser.error("Video file names must be unique; frames are named after them")
+
+    end_frames = {}
+
+    for item in args.end:
+        clip, _, frame = item.rpartition(":")
+
+        if clip not in stems or not frame.isdigit() or int(frame) < 1:
+            parser.error(f"--end {item}: expected CLIP:FRAME for one of {', '.join(stems)}")
+
+        end_frames[clip] = int(frame)
 
     for video in args.videos:
         if not video.is_file():
@@ -189,13 +204,15 @@ def main():
     }
 
     for video in args.videos:
-        candidates, properties = sample_clip(video, args.every)
+        end_frame = end_frames.get(video.stem)
+        candidates, properties = sample_clip(video, args.every, end_frame)
         kept, skipped = select_frames(candidates, args.min_sharpness_ratio, args.min_change)
         written = write_frames(video, kept, output_dir, args.max_side)
 
         manifest["clips"][video.stem] = {
             "path": str(video),
             "sha256": sha256_file(video),
+            "end_frame": end_frame,
             **properties,
             "sampled": len(candidates),
             "kept": len(written),

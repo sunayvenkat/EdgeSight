@@ -47,9 +47,11 @@ Large boulders were detected and tracked with stable IDs for long stretches: the
 
 Thin sticks on concrete were detected in some frames and missed in others, including sticks inside the monitoring zone. A pile of leaves at the sidewalk edge was also labeled debris, which is arguably correct. 33 detections were labeled rock.
 
-### Cones: not a valid test of the cone class
+### Cones: delineator posts the model was never trained on
 
-The clip shows tall, thin orange delineator posts, mostly far away and behind a fence. The training class `cone` consists of traffic cones: all 17 training images are stock or product photos of traffic cones, usually large in the frame, with several showing a row or group of cones. One post was detected and tracked for 47 frames when the camera came close. A metal drainage grate was labeled debris. **This clip needs to be re-shot with traffic cones.**
+The clip shows tall, thin orange delineator posts, mostly far away and behind a fence. The v1 training class `cone` consists of traffic cones: all 17 training images are stock or product photos of traffic cones, usually large in the frame, with several showing a row or group of cones. One post was detected and tracked for 47 frames when the camera came close. A metal drainage grate was labeled debris.
+
+When this evaluation was written, the clip was not a valid test of the cone class. On 2026-10-24 the class was redefined to include delineator posts (`docs/retraining.md`), so the clip is now a valid cone test, and 18.6% is v1's baseline. A traffic-cone test clip is still needed to cover both shapes.
 
 ### Empty scene: frequent false alarms
 
@@ -89,3 +91,19 @@ These are advisory; the decision is the user's.
 2. **Real-world positives.** Label frames from your own footage of rocks, debris, and traffic cones, especially small, distant, and low-viewpoint examples.
 3. **Keep these four clips as a test set only.** Record separate footage for training, so the model is never evaluated on video it was trained on. Re-shoot the cone test with traffic cones, and keep fingers clear of the lens.
 4. **Retrain and re-run this evaluation**, comparing against these results with `scripts/analyze_video.py`. Training is quick on this CPU: pilot_v2_data's 30 epochs took about 3 minutes (`runs/train/pilot_v2_data/results.csv`).
+
+## Follow-Up: edgesight-ml-v2 (2026-10-24)
+
+The recommendations above were carried out (`docs/retraining.md`). Training added labeled frames from new real-world footage and obstacle-free background frames. These four clips stayed test-only, and the same command scored the released model, edgesight-ml-v2 (`pilot_v3_real`):
+
+| Clip | Measure | v1 | v2 |
+|---|---|---:|---:|
+| empty | False-positive frames | 64.2% | 1.6% |
+| empty | CAUTION frames | 46.4% | 1.4% |
+| debris | Debris detected | 47.9% | 76.6% |
+| rocks | Rock detected | 84.5% | 92.2% |
+| cones | Cone detected (delineator posts) | 18.6% | 45.9% |
+
+Sources: `runs/video_analysis/{cones,rocks,debris,empty}.json` (v1) and `runs/video_analysis/b_*.json` (v2).
+
+v2 meets the empty-scene, debris, and rock targets but not the cone target of 70%. Its remaining false positives are mostly isolated single leaves and a drainage grate labeled debris. Both are planned for v2.1.

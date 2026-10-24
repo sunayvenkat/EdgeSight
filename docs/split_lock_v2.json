@@ -1,0 +1,102 @@
+{
+  "val": {
+    "cone_008.jpg": {
+      "image": "2b7132d2de6486ae6fe87fa99bad2d1e525d2832e928f7daf1a520ad0ee89c53",
+      "label": "5a4a60915c477c5feeb7cc0a346aaff605b090fe0073fa82b02cebc45df540c4"
+    },
+    "cone_009.jpg": {
+      "image": "ea5e675ee04b397227f9503ef1fc5bced24550821e750aabbdc055f8aded8a4c",
+      "label": "5a63eba0b9f89e22599a18620aa074f8d06c251f71113108c06f9be0fa39f0f0"
+    },
+    "cone_021.jpg": {
+      "image": "765d45a443e7b122d0b3d0621144d4d60935217679199e69d951b787209541f1",
+      "label": "537c4c4a714467f975dbdc7ca4e5c5feffd68fd21d84a5f926c0c01d859f0d6d"
+    },
+    "cone_022.jpg": {
+      "image": "222c4f262d96e8dff2c775bd2796c0a8e7312982c1f203853c5bbf45cce164fd",
+      "label": "2d8dbc18be15ec13624bcb6f7a90f1b87d3b0c870d49480ea4a0487a921f2238"
+    },
+    "cone_023.jpg": {
+      "image": "36b1bb383e312a134ec8ba0d8027185c70140c01a120dcfc6eb7fed632bf9a6d",
+      "label": "7eac5419ab9453a22465f0667ab35d8d3b7f8b611059fc1f53c087a253f2f3f1"
+    },
+    "cone_024.jpg": {
+      "image": "6222962b195b34f4a908839cb47dd0a7b6765d01796ef57edf20ce82cf3c854e",
+      "label": "36789de16ce7a0fe77ebc72fb1a7235344b11ce2326faab734fa54a3c5d29c41"
+    },
+    "cone_025.jpg": {
+      "image": "b11d8fbfc2cd7e9cca831d6a5b30a4e855928ac73fba6066f41f513248360472",
+      "label": "2e7e53cb9e89707a45a439f31d2489ddcf5bfa3ae868b847dfb1d304cd310b82"
+    },
+    "debris_008.jpg": {
+      "image": "06e42fdd97f72246b1b4671499cc8505ac21227bdf2ba4ee82f275bb9529faea",
+      "label": "657079d4fe4237e9a2c06f1406ecb99d91fc4853eb8991a3e6c48d88a6c808b6"
+    },
+    "debris_009.jpg": {
+      "image": "8e978e4b7ba4ca73bef026e586ef35880bd3c7adfd4f335d49ac472cef4450d6",
+      "label": "ab9a05756a8d3d98e833f69e39c9d80bb5c211fdca6ed0bbe25370e832589e61"
+    },
+    "debris_021.jpg": {
+      "image": "128649be1d8bc989fd7216ee95ec039045fabf452de68db84ad88a111d9cdcff",
+      "label": "80bffa2747b9747e0cba7951962223c7e1d86f6b234cee72a9c9da5472ea6f96"
+    },
+    "debris_022.jpg": {
+      "image": "b019a18e2b17fee5a2e01b5d83a074c0374ef4c4632d642afa2a05f58c694af8",
+      "label": "d67b4895d8e99d104785b8248c07117640866f98ff43cb9c5d7283d0039fb563"
+    },
+    "debris_023.jpg": {
+      "image": "7321614ba6e01a2e863d2efae81eafcbf0cd2373943b3e29656a509751c33cbe",
+      "label": "501b84fcae9c56fd7ab021a0a5e74c6d0ae340d298d8ad093c8cae6722fcb4b9"
+    },
+    "debris_024.jpg": {
+      "image": "374d58133df0b514f972fecebe559ec9ca9e69c190de9d09c81f5bdc2f807486",
+      "label": "113889a826a78d4508d56298baad1ccac2bacfa79248cd8bdef1057d8b4f314d"
+    },
+    "debris_025.jpg": {
+      "image": "074c7e41d0c3db7af1329595bbb71b3aa5208915e48f03fdcf89b8092b59ca83",
+      "label": "972dd26ff3d22eed25a8bac9c46e26039cd450d694e3a10d0cd3e0d684848d3c"
+    },
+    "rock_008.jpg": {
+      "image": "78692eec18dea0fdec557e02a0ab02caf0c27dba157f5a3a257c5a49fc772696",
+      "label": "1d8b3eeb139ba21192770655374b2099b93241fdca374fca9baf0c63f4f2a264"
+    },
+    "rock_009.jpg": {
+      "image": "d2134498ffa92ea46d7ec02d42a777aa45f96b29d68f163825ec5d80d2f61ad5",
+      "label": "bd0b5bf01973daf908773e4481beb4cddb14e2abd70ae49f690e957a70360d9b"
+    },
+    "rock_021.jpg": {
+      "image": "a7b555bf197115801fa9eed81e65985de8d18c2d9647c325204e4433f0f060fa",
+      "label": "c6d26de53a0842de62656150dac68d6b7402648800aca3865df58886e93aaa94"
+    },
+    "rock_022.jpg": {
+      "image": "1e337c528dc1cdf220ce2d67515fa025c1a77cfe36ded43e2d6da9c358657169",
+      "label": "4c5a6e3e3850ad9e4cdb1699d57c8b44aa43862746a09ecf13f5e3588176fa76"
+    },
+    "rock_023.jpg": {
+      "image": "f6fed1d44b39d37f3a254564505e462200a717c23f7f3951fc177b7edf4c2a48",
+      "label": "de249dee69d1654bcfcf6fdb0bdd0e8cf1a4d535710b5333bda219a80f6d4a4b"
+    },
+    "rock_024.jpg": {
+      "image": "f6184444cb2c93d6d842e4fc14154e5eae8dd2268038a8eb14b3e8c6fd716583",
+      "label": "d348531b96c54838c15b9840546f0edd2826ad4857d35f6f7464e85a39c5c41e"
+    },
+    "rock_025.jpg": {
+      "image": "ebcf3909ef2379119e81a2b53922ece797281b39fffe2421a6996e59cf62459b",
+      "label": "8c4ec44251b282c64aedd6479a2f19a3ce630a7291c25eb5d8fe5d4185573275"
+    }
+  },
+  "test": {
+    "cone_010.jpg": {
+      "image": "3273972f518b919d19ddf4bd9c10f98d97848f9999dc1d2dedaf7c50a08103cb",
+      "label": "e4f37d2ed785851dd397e0324c58db84b9b04988490c7af391a2e141839ae61b"
+    },
+    "debris_010.jpg": {
+      "image": "72b64cda5fdf2b209942ff3eb1bce9755baff8ebee54a3d8b32058c854b7a8f0",
+      "label": "e459c5c34331f7047800c7e1c5d0a48fb37514ccb7b7c2b33f75fc54fe6c2d5b"
+    },
+    "rock_010.jpg": {
+      "image": "a0edcf82632532226ba50dd868c5f522195a11f09b5de537d9fc03a63baf7e3c",
+      "label": "cd40152bf12a6fee6f984d0c027c53a0d1bb3f41424b052470db5e872ac13e2f"
+    }
+  }
+}

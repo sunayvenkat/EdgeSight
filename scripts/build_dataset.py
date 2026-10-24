@@ -64,14 +64,58 @@ def read_cvat_export(path: Path) -> dict[str, str]:
     return {Path(name).stem: text for name, text in files.items() if name.startswith("labels/") and name.endswith(".txt")}
 
 
-def plan_frames(session_manifest, clip_splits, background_patterns, labels):
+def clip_label_text(text, tolerance=1e-4):
+    """
+    Clip YOLO boxes that overshoot the image edge by less than tolerance.
+
+    CVAT rounds coordinates to 6 decimals, so a box snapped to the edge can
+    end 0.0000005 outside the image. Larger overshoots are real labeling
+    errors and raise. Returns (text, number of clipped boxes).
+    """
+    lines = []
+    clipped = 0
+
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+
+        class_id, x, y, w, h = line.split()
+        x, y, w, h = map(float, (x, y, w, h))
+        edges = [x - w / 2, y - h / 2, x + w / 2, y + h / 2]
+
+        if min(edges) < -tolerance or max(edges) > 1 + tolerance:
+            raise ValueError(f"Box extends outside the image: {line}")
+
+        # Pull overshooting edges just inside the image, so 6-decimal rounding cannot push them back out
+        margin = 1e-6
+        bounded = [margin if edge < 0 else 1 - margin if edge > 1 else edge for edge in edges]
+
+        if bounded != edges:
+            clipped += 1
+            left, top, right, bottom = bounded
+            x, y, w, h = (left + right) / 2, (top + bottom) / 2, right - left, bottom - top
+
+        lines.append(f"{class_id} {x:.6f} {y:.6f} {w:.6f} {h:.6f}")
+
+    return "".join(line + "\n" for line in lines), clipped
+
+
+def plan_frames(session_manifest, clip_splits, background_patterns, labels, empty_frames=()):
     """
     Decide each frame's split and label text.
 
-    Returns (entries, skipped_clips). Frames from background clips get an
-    empty label. Any other frame without a CVAT label is an error, so a missed
-    export cannot silently turn objects into backgrounds.
+    Returns (entries, skipped_clips). Frames from background clips, and
+    frames listed in empty_frames (reviewed in CVAT and left with no boxes,
+    which CVAT exports as no file), get an empty label. Any other frame
+    without a CVAT label is an error, so a missed export cannot silently turn
+    objects into backgrounds.
     """
+    frame_stems = {Path(frame["file"]).stem for frame in session_manifest["frames"]}
+    unknown = sorted(set(empty_frames) - frame_stems)
+
+    if unknown:
+        raise ValueError(f"empty_frames not in this session: {', '.join(unknown)}")
+
     entries = []
     skipped = set()
 
@@ -87,7 +131,7 @@ def plan_frames(session_manifest, clip_splits, background_patterns, labels):
 
         stem = Path(frame["file"]).stem
 
-        if any(fnmatch.fnmatch(frame["clip"], pattern) for pattern in background_patterns):
+        if any(fnmatch.fnmatch(frame["clip"], pattern) for pattern in background_patterns) or stem in empty_frames:
             label = ""
         elif stem in labels:
             label = labels[stem]
@@ -100,11 +144,13 @@ def plan_frames(session_manifest, clip_splits, background_patterns, labels):
 
 
 def known_test_clip_hashes() -> set[str]:
-    """Hashes of the clips used for testing in docs/video_evaluation.md."""
+    """Hashes of clips analyzed as test clips (reports without a role predate --role and are tests)."""
     if not TEST_CLIP_RESULTS.is_dir():
         return set()
 
-    return {json.loads(path.read_text(encoding="utf-8"))["video_sha256"] for path in TEST_CLIP_RESULTS.glob("*.json")}
+    reports = [json.loads(path.read_text(encoding="utf-8")) for path in TEST_CLIP_RESULTS.glob("*.json")]
+
+    return {report["video_sha256"] for report in reports if report.get("role", "test") == "test"}
 
 
 def count_boxes(output: Path):
@@ -155,6 +201,7 @@ def main():
     test_hashes = known_test_clip_hashes()
     background_patterns = plan.get("background_clips", [])
     planned = []
+    clipped_total = 0
 
     for session in plan["sessions"]:
         session_dir = RAW_ROOT / session["session"]
@@ -168,7 +215,12 @@ def main():
                 raise ValueError(f"Clip {clip} is a test clip from docs/video_evaluation.md and cannot be used for training")
 
         labels = read_cvat_export(resolve(session["labels"])) if session.get("labels") else {}
-        entries, skipped = plan_frames(manifest, session["clips"], background_patterns, labels)
+
+        for stem, text in labels.items():
+            labels[stem], clipped = clip_label_text(text)
+            clipped_total += clipped
+
+        entries, skipped = plan_frames(manifest, session["clips"], background_patterns, labels, set(session.get("empty_frames", [])))
 
         if skipped:
             print(f"Note: session {session['session']} clips not in the plan were skipped: {', '.join(skipped)}")
@@ -180,32 +232,53 @@ def main():
     if len(set(stems)) != len(stems):
         raise ValueError("Duplicate frame names across sessions; rename clips so their names are unique")
 
-    for split in SPLITS:
-        (output / "images" / split).mkdir(parents=True, exist_ok=True)
-        (output / "labels" / split).mkdir(parents=True, exist_ok=True)
+    # Build in a staging folder and move it into place only after every check passes
+    staging = output.parent / f".{output.name}.building"
 
-    base_root = resolve(plan["base"]["dataset"])
+    if staging.exists():
+        shutil.rmtree(staging)
 
-    for source_split, target_split in plan["base"]["splits"].items():
-        copy_split(base_root, source_split, output, target_split)
+    try:
+        for split in SPLITS:
+            (staging / "images" / split).mkdir(parents=True)
+            (staging / "labels" / split).mkdir(parents=True)
 
-    for session_dir, entry in planned:
-        shutil.copy2(session_dir / entry["file"], output / "images" / entry["split"] / entry["file"])
-        (output / "labels" / entry["split"] / f"{Path(entry['file']).stem}.txt").write_text(entry["label"], encoding="utf-8")
+        base_root = resolve(plan["base"]["dataset"])
 
-    data_yaml = {"train": "images/train", "val": "images/val", "test": "images/test", "nc": len(CLASS_NAMES), "names": CLASS_NAMES}
-    (output / "data.yaml").write_text(yaml.safe_dump(data_yaml, sort_keys=False), encoding="utf-8")
+        for source_split, target_split in plan["base"]["splits"].items():
+            copy_split(base_root, source_split, staging, target_split)
 
-    errors, image_counts = validate_dataset(output, require_images=True)
+        for session_dir, entry in planned:
+            shutil.copy2(session_dir / entry["file"], staging / "images" / entry["split"] / entry["file"])
+            (staging / "labels" / entry["split"] / f"{Path(entry['file']).stem}.txt").write_text(entry["label"], encoding="utf-8")
 
-    if errors:
-        raise SystemExit("Dataset validation failed:\n" + "\n".join(errors))
+        data_yaml = {"train": "images/train", "val": "images/val", "test": "images/test", "nc": len(CLASS_NAMES), "names": CLASS_NAMES}
+        (staging / "data.yaml").write_text(yaml.safe_dump(data_yaml, sort_keys=False), encoding="utf-8")
 
-    manifest = build_manifest(output)
-    duplicates = find_cross_split_duplicates(manifest)
+        errors, image_counts = validate_dataset(staging, require_images=True)
 
-    if duplicates:
-        raise SystemExit("Cross-split duplicates found:\n" + "\n".join(duplicates))
+        if errors:
+            raise SystemExit("Dataset validation failed:\n" + "\n".join(errors))
+
+        manifest = build_manifest(staging)
+        duplicates = find_cross_split_duplicates(manifest)
+
+        if duplicates:
+            raise SystemExit("Cross-split duplicates found:\n" + "\n".join(duplicates))
+
+        output.mkdir(parents=True, exist_ok=True)
+
+        for name in ("images", "labels", "data.yaml"):
+            if (output / name).exists() and name == "data.yaml":
+                (output / name).unlink()
+
+            shutil.move(str(staging / name), str(output / name))
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+
+    if clipped_total:
+        print(f"Clipped {clipped_total} box(es) that overshot the image edge by less than 0.0001 (CVAT rounding)")
 
     if lock_path is not None:
         lock_path.parent.mkdir(parents=True, exist_ok=True)

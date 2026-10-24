@@ -13,8 +13,10 @@ The rover only has to recognize an obstacle and move around it, so the classes s
 | ID | Class | Label | Do not label |
 |---:|---|---|---|
 | 0 | rock | Rocks and stones of any shape: boulders, landscaping rocks, loose stones | Gravel and pebbles below the minimum size; curbs; concrete blocks |
-| 1 | cone | Traffic cones | Delineator posts, bollards, poles, and other orange objects |
-| 2 | debris | Ground litter: sticks, twigs, and leaves. Label each stick or twig, and each pile or cluster of leaves, as one box. | Isolated single leaves; drainage grates; paper or plastic trash (not in scope for now) |
+| 1 | cone | Traffic cones, and tall orange delineator posts (with or without a base) | Bollards, poles, and other orange objects that are not cones or delineator posts |
+| 2 | debris | Ground litter: sticks, twigs, and leaves. Label each stick or twig, and each distinct pile or cluster of leaves, as one box. | Isolated single leaves; ground fully covered in leaves (that is terrain); drainage grates; paper or plastic trash (not in scope for now) |
+
+Delineator posts were added to `cone` on 2026-10-24. They are bright orange, mark hazards the same way, and the rover must avoid them the same way; only the shape differs. The v1 training data contains traffic cones only.
 
 ## Labeling Rules
 
@@ -22,6 +24,7 @@ The rover only has to recognize an obstacle and move around it, so the classes s
 - **Occlusion.** Label partly hidden objects if at least about a third is visible and you can tell what it is.
 - **Tight boxes.** Draw boxes around the visible part only.
 - **Groups.** A leaf pile or a tangle of sticks gets one box. Sticks that are clearly separate get separate boxes.
+- **Leaf-covered ground is terrain.** When leaves carpet the whole ground, do not box the carpet. Label the sticks and rocks on top of it, and leaf piles only where they form a distinct mound with clear edges. Boxing large stretches of ground would teach the model the same oversized boxes that caused v1's false alarms.
 - **When unsure, leave it unlabeled** rather than guess. A wrong label teaches the model a wrong answer.
 - **Frames with nothing to label** stay in the dataset with an empty label file. They are the background examples the v1 data lacked.
 
@@ -33,7 +36,7 @@ These were set before training (2026-10-22) and are measured with `scripts/analy
 |---|---|---|
 | False CAUTION on the empty-scene clip | 46.4% of frames | **5% or less** |
 | Debris detected on the debris clip | 47.9% of frames | **70% or more** |
-| Cones detected on a re-shot traffic-cone clip | No valid baseline (the v1 clip showed posts) | **70% or more** |
+| Cones detected on the cone clip (delineator posts; valid since the 2026-10-24 definition change) | 18.6% of frames | **70% or more** |
 | Rocks detected on the rock clip | 84.5% of frames | **85% or more** |
 | Stock-photo validation mAP50-95 (640) | 0.3936 (`docs/quantization.md`, FP32) | **0.35 or more** |
 
@@ -54,9 +57,128 @@ Record in daylight, landscape, 1080p at 30 FPS. Keep fingers clear of the lens e
 - Name clips by class, place, and number, for example `cone_parkinglot_1.mp4` or `empty_sidewalk_2.mp4`.
 
 **Test footage** (never labeled or trained on):
-- Re-shoot the cone test with traffic cones.
+- The four clips from `docs/video_evaluation.md` stay test-only. Under the updated cone definition, `cones.mp4` is a valid cone test.
+- Add a traffic-cone test clip, so both cone shapes are tested.
+- Add a rock test clip from a different location: `rocks_2.mp4` was filmed in the same rock garden as `rocks.mp4`.
 - Optionally, add one mixed-obstacle clip.
-- The four clips from `docs/video_evaluation.md` stay test-only.
+
+## Collected Data
+
+### Session 004 (recorded and extracted 2026-10-24)
+
+One clip per category was available, so all usable clips went to training. The four clips from `docs/video_evaluation.md` remain the test set.
+
+| Clip | Use | Frames | Notes |
+|---|---|---:|---|
+| `cones_2` | Train | 47 | Delineator posts on bases in a parking lot, daylight |
+| `debris_2` | Train | 46 | Sticks on grass and dirt |
+| `mixed_2` | Train, frames 0–559 only | 38 | Leaf-covered ground with rocks and sticks. From about frame 570, the camera shows the rock garden from the `rocks.mp4` test clip, so those frames are excluded (`--end mixed_2:560`). The early close-ups may come from the same area, a small caveat on the rock test result. |
+| `empty_2` | Train (background) | 39 | Parking lot with parked cars; no labels needed |
+| `rocks_2` | Held back | — | Filmed in the `rocks.mp4` test rock garden. It can be used for training once a rock test clip from a different location exists. |
+
+Extraction used the defaults (every 15th frame; blurry and near-duplicate frames skipped). Pre-labeling suggested 109 cone, 104 debris, and 97 rock boxes across the 131 non-background frames (`datasets/rover_obstacles/raw/session_004/`).
+
+**Labels.** The corrected CVAT export (`cvat_export.zip`) changed every pre-labeled frame:
+
+| | Pre-labels (v1 model) | Corrected |
+|---|---:|---:|
+| Debris boxes | 104 | 237 |
+| Cone boxes | 109 | 106 |
+| Rock boxes | 97 (mostly pale leaves) | 14 |
+| Median debris box, % of frame | 8.9 | 1.6 |
+
+Five frames were reviewed and left with no boxes, which CVAT exports as no file. They are listed as `empty_frames` in the plan: `cones_2` frames 660–705 (parking lot, with only a post sliver at the edge in 660) and `mixed_2` frame 555 (leaf-covered terrain). Seven boxes snapped to the image edge overshot it by 0.0000005 because of CVAT's 6-decimal rounding, and the builder clipped them.
+
+**Dataset.** `datasets/rover_obstacles_v2` (split lock: `docs/split_lock_v2.json`):
+- **train:** 221 images, 44 of them background (20%); 291 debris, 135 cone, and 169 rock boxes
+- **val:** v1's 21 stock photos
+- **test:** v1's 3 test photos
+
+**Validation split.** With no held-out real-world clips yet, validation uses v1's 21 stock photos (`datasets/rover_obstacles_v2_plan.json`). Stock photos cannot measure false alarms, so the test clips decide whether v2 meets the Success Criteria. Candidate B (`pilot_v3_real`) is the planned v2. Candidate A (`pilot_v3_negatives`, background frames only) is an ablation that shows what negatives alone change.
+
+**v1 on the new footage.** These are diagnostics on training footage, not test results (`--role diagnostic`; `runs/video_analysis/v1_*_2.json`):
+
+| Clip | v1 result |
+|---|---|
+| `cones_2` | Cones in 60.3% of frames |
+| `rocks_2` | Rocks in 98.9% of frames |
+| `debris_2` | Debris in 41.8% of frames |
+| `mixed_2` | 867 rock detections in 513 frames, many on pale leaves; median box 0.6% of the frame |
+| `empty_2` | False detections in 13.5% of frames; CAUTION in 46 of 576 frames |
+
+## Results
+
+### Candidate A: background frames only (ablation, 2026-10-24)
+
+The training data was v1's 51 stock photos plus 39 background frames from `empty_2`, at image size 640 with seed 42. Training stopped early at epoch 33, and the best epoch was 23 (`runs/train/pilot_v3_negatives/results.csv`).
+
+| Measure | v1 | Candidate A |
+|---|---:|---:|
+| False CAUTION, empty clip | 46.4% | **0.0%** (0 false detections) |
+| Debris detected, debris clip | 47.9% | **0.0%** |
+| Cones detected, cone clip | 18.6% | 4.8% |
+| Rocks detected, rock clip | 84.5% | 80.3% |
+| Stock-photo validation mAP50-95 (640) | 0.3914 | 0.3847 |
+| Stock-photo validation debris mAP50 (640) | 0.2608 | 0.4136 |
+
+Sources: `runs/video_analysis/{cones,rocks,debris,empty}.json` (v1) and `a_*.json` (A); `runs/evaluation/v1_stockval_640/summary.json` and `pilot_v3_negatives_stockval_640/summary.json`.
+
+**Findings:**
+
+- **Background frames alone eliminated the false alarms but also eliminated debris detection.**
+- **This is learned, not a threshold effect.** On 20 frames sampled from the debris clip, v1's highest debris score per frame had a median of 0.41. A's had a median of 0.00, and only one frame reached 0.20.
+- **Two likely causes.** The background frames are all a cracked parking lot, so A never saw a labeled stick on pavement to contrast with pavement cracks. And backgrounds made up 43% of A's training images, well above the roughly 0–10% commonly recommended for YOLO training.
+- **The stock-photo validation did not detect the regression.** Its overall score barely moved, and its debris score improved. Real-world validation clips are needed to select models.
+
+### Candidate B: full v2 data (2026-10-24)
+
+The training data was `datasets/rover_obstacles_v2`: 221 images, 44 of them background, at image size 640 with seed 42. Training stopped early at epoch 42, and the best epoch was 32 (`runs/train/pilot_v3_real/results.csv`, 1,737 s).
+
+| Success criterion | Target | v1 | A | **B** | Met |
+|---|---|---:|---:|---:|---|
+| False CAUTION, empty clip | ≤ 5% | 46.4% | 0.0% | **1.4%** | Yes |
+| Debris detected, debris clip | ≥ 70% | 47.9% | 0.0% | **76.6%** | Yes |
+| Rocks detected, rock clip | ≥ 85% | 84.5% | 80.3% | **92.2%** | Yes* |
+| Stock-photo validation mAP50-95 (640) | ≥ 0.35 | 0.3914 | 0.3847 | **0.4411** | Yes |
+| Cones detected, cone clip | ≥ 70% | 18.6% | 4.8% | **45.9%** | **No** |
+
+\*Small caveat: the early `mixed_2` frames used for training may come from near the rock test location.
+
+Sources: `runs/video_analysis/b_*.json`; `runs/evaluation/pilot_v3_real_v2val_640/summary.json` and `v1_v2val_640/summary.json`.
+
+**Findings:**
+- **B fixes the false alarms without losing debris.** Empty-scene false-positive frames fell from 64.2% to 1.6%, and debris detection rose from 47.9% to 76.6%. The labeled real frames supplied the contrast candidate A lacked.
+- **Stock-photo performance improved rather than regressed.** mAP50-95 rose from 0.391 to 0.441; cone mAP50 rose from 0.80 to 0.92 and debris mAP50 from 0.26 to 0.32.
+- **Cones improved 2.5× but missed the target.** B now detects distant posts behind the fence (confidence 0.42–0.70), which v1 mostly missed. The only cone training footage is one daylight parking-lot clip, while the test clip is posts behind a fence in the evening.
+- **New false positives, mostly in the debris class:**
+  - *Rock clip:* 114 debris detections, mostly isolated single leaves (confidence 0.47–0.68) and a dark garden stake. Single leaves are on the "do not label" list; check the debris labels for boxed single leaves.
+  - *Cone clip:* 76 debris and 34 rock detections, including a drainage grate labeled debris (0.71).
+- **CAUTION rises on clips with real obstacles,** for example 73.0% to 84.9% of frames on the rock clip. That is expected when more real obstacles are found, and the leaf false positives add to it.
+
+**Next data, to close the gaps:**
+- cone footage across backgrounds, distances, and lighting, covering both traffic cones and posts;
+- negatives containing drainage grates and scattered single leaves;
+- held-out real-world validation clips.
+
+### Release (2026-10-24)
+
+Candidate B was released as **edgesight-ml-v2**, with the missed cone target recorded.
+
+1. **Select and archive:** `scripts/select_model.py --archive` selected `pilot_v3_real` over v1 on stock validation mAP50-95 (0.4411 vs 0.3914) and moved v1's release files to `models/archive/edgesight-ml-v1/`. v1's INT8 files were archived alongside it.
+2. **Export:** `scripts/export_onnx.py` exported `models/selected.onnx`. Its outputs are identical to the evaluated candidate (maximum absolute difference 0.0).
+3. **Re-tune:** `scripts/tune_onnx.py --tag v2` and `scripts/summarize_tuning.py --tag v2` rewrote `models/runtime_config.json`. The presets show the same pattern as v1: the all-core default had a 15.4 ms median, and 4 threads without spinning had the steadiest p95, 21.8 ms (`runs/benchmarks/tuning_v2_*`).
+4. **Verify:** the app runs v2 without `--model`.
+
+Details and held-out test results are in `docs/model_card.md`.
+
+**v2.1 plan:**
+- cone footage across backgrounds, distances, and lighting, for traffic cones and posts;
+- background footage with drainage grates and scattered single leaves;
+- held-out real-world validation clips;
+- a traffic-cone test clip and a rock test clip from a new location;
+- a check of the debris labels for boxed single leaves.
+
+**Implication for candidate B (written after candidate A):** the labeled real frames (sticks on grass and dirt, leaf litter, delineator posts) supply the contrast A lacked, and they cut backgrounds to about 18% of training images. If B still under-detects debris, the next variant should use fewer background frames.
 
 ## Workflow
 
@@ -122,10 +244,13 @@ python -m scripts.build_dataset --plan datasets/rover_obstacles_v2_plan.json --o
 ```
 
 The build fails if:
-- a clip is used by `docs/video_evaluation.md` (matched by hash);
-- an object frame has no label;
+- a clip was analyzed as a test clip (matched by hash; `--role diagnostic` runs don't count);
+- an object frame has no label (list frames you deliberately left without boxes under `"empty_frames"` in the session);
 - CVAT's class order differs from rock, cone, debris;
+- a box extends past the image by more than 0.0001 (smaller overshoots from CVAT's rounding are clipped);
 - images are duplicated across splits.
+
+The dataset is built in a temporary folder and moved into place only after every check passes, so a failed build leaves nothing behind.
 
 ### 5. Train candidates
 

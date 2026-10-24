@@ -22,8 +22,10 @@ On 2026-10-22, `pip install --dry-run` against `requirements.txt` for Linux aarc
 
 | File | Needed for | SHA-256 |
 |---|---|---|
-| `models/selected.onnx` | Running the app (default ONNX backend) | `1a7754f3746511326330c81604ca8c8c9f556fd9d7afc87d6f21c7603114b552` |
-| `models/selected.pt` | `--backend pytorch`, `scripts/tune_onnx.py`, and benchmark scripts | `8ef59097dee4889acc8fd327b48fb64547b7f4ba372740fddee6161099a23b9f` |
+| `models/selected.onnx` | Running the app (default ONNX backend) | `4df05391b598e7094c62dc0e92b440ceb1bace503ed997ae96ad521b9c94e5dc` |
+| `models/selected.pt` | `--backend pytorch`, `scripts/tune_onnx.py`, and benchmark scripts | `b4a4b6dedfe855ce252c8f9f2499996f5ca4b7d808f4fedbcea636740afedcb4` |
+
+These are the edgesight-ml-v2 release files (2026-10-24). The v1 release is kept in `models/archive/edgesight-ml-v1/`.
 
 The ONNX backend refuses to start if `models/selected.onnx` does not match the hash recorded in `models/runtime_config.json`.
 
@@ -83,7 +85,7 @@ Each run prints processed FPS, median and p95 inference-plus-tracking time, and 
 
 ## Desktop Reference
 
-Measured on the development machine (Intel Core Ultra 9 285H, Windows 11) with a 640 × 480 webcam at 30 FPS. All settings were limited by the camera's 30 FPS, so processing time and CPU are the meaningful comparisons.
+Measured on the development machine (Intel Core Ultra 9 285H, Windows 11) with a 640 × 480 webcam at 30 FPS, using the v1 model. v2 has the same architecture and input size, so its speed is expected to match. All settings were limited by the camera's 30 FPS, so processing time and CPU are the meaningful comparisons.
 
 | Setting | Processed FPS | Median (ms) | P95 (ms) | Process CPU |
 |---|---:|---:|---:|---:|
@@ -101,7 +103,10 @@ The mission target is at least 3 FPS on the Raspberry Pi.
 2. Compare `--threads 3` and `--threads 4`. The camera capture thread competes with ONNX Runtime for the Pi's four cores.
 3. Compare against `--backend pytorch` under the same conditions.
 4. Re-run `scripts/tune_onnx.py` presets on the Pi; the current `runtime_config.json` was tuned on the desktop CPU. This needs `models/selected.pt` and the validation images.
-5. Benchmark the INT8 candidates from `docs/quantization.md` against FP32: `models/selected_int8_u8_no_head.onnx` (primary) and `models/selected_int8_s8_no_decode.onnx`. These are gitignored, so copy them or rebuild them with `scripts/quantize_onnx.py`. On the desktop, the s8 variants were 2.5–2.7× slower than FP32 because of x86 kernel coverage; ARM may differ. The app cannot load them yet, because `create_session()` accepts only the FP32 hash in `models/runtime_config.json`.
+5. Benchmark INT8 against FP32 using the two best variants from `docs/quantization.md`: `u8_no_head` (primary) and `s8_no_decode`.
+   - The INT8 files in `models/archive/edgesight-ml-v1/` were built from v1. Rebuild them from the v2 release with `scripts/quantize_onnx.py` and re-check accuracy before benchmarking.
+   - Run them with `--model`.
+   - On the desktop, the s8 variants were 2.5–2.7× slower than FP32 because of x86 kernel coverage; ARM may differ.
 6. Record temperature and throttling during sustained runs with `vcgencmd measure_temp` and `vcgencmd get_throttled`. The Pi 5 throttles under sustained load without cooling, so use the Active Cooler or equivalent for benchmarks.
 
 ## Hardware

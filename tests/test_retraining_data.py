@@ -19,8 +19,8 @@ def write_video(path, values, size=(160, 90), fps=30.0):
     for value in values:
         frame = np.full((size[1], size[0], 3), value, dtype=np.uint8)
 
-        # High-contrast grid lines give every frame the same sharp edges for the blur check
-        line = 0 if value > 127 else 255
+        # Grid lines exactly 128 levels from the background give every frame equal sharpness for the blur check
+        line = (value + 128) % 256
         frame[::10, :] = line
         frame[:, ::10] = line
         writer.write(frame)
@@ -260,3 +260,90 @@ def test_build_dataset_refuses_test_clips(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="test clip"):
         run_build(tmp_path, monkeypatch, plan)
+
+
+def test_only_test_role_clips_are_guarded(tmp_path, monkeypatch):
+    results = tmp_path / "video_analysis"
+    results.mkdir()
+    (results / "old.json").write_text(json.dumps({"video_sha256": "a"}), encoding="utf-8")
+    (results / "test.json").write_text(json.dumps({"video_sha256": "b", "role": "test"}), encoding="utf-8")
+    (results / "diag.json").write_text(json.dumps({"video_sha256": "c", "role": "diagnostic"}), encoding="utf-8")
+    monkeypatch.setattr(build_dataset, "TEST_CLIP_RESULTS", results)
+
+    assert build_dataset.known_test_clip_hashes() == {"a", "b"}
+
+
+def test_extract_frames_end_cuts_clip(tmp_path, monkeypatch):
+    monkeypatch.setattr(extract_frames, "RAW_ROOT", tmp_path / "raw")
+
+    clip = write_video(tmp_path / "mixed_test_2.avi", [index * 6 for index in range(40)])
+
+    monkeypatch.setattr(sys, "argv", ["extract_frames", str(clip), "--session", "s2", "--every", "10", "--end", "mixed_test_2:25"])
+    extract_frames.main()
+
+    manifest = json.loads((tmp_path / "raw" / "s2" / "frames.json").read_text(encoding="utf-8"))
+
+    assert [frame["frame_index"] for frame in manifest["frames"]] == [0, 10, 20]
+    assert manifest["clips"]["mixed_test_2"]["end_frame"] == 25
+    assert manifest["clips"]["mixed_test_2"]["frames"] == 40
+
+
+def test_extract_frames_rejects_unknown_end_clip(tmp_path, monkeypatch):
+    monkeypatch.setattr(extract_frames, "RAW_ROOT", tmp_path / "raw")
+
+    clip = write_video(tmp_path / "clip.avi", [0, 50])
+
+    monkeypatch.setattr(sys, "argv", ["extract_frames", str(clip), "--session", "s3", "--end", "other:10"])
+
+    with pytest.raises(SystemExit):
+        extract_frames.main()
+
+
+def test_plan_frames_listed_empty_frames_become_backgrounds():
+    manifest = {"frames": [{"file": "cones_2_f00660.jpg", "clip": "cones_2"}, {"file": "cones_2_f00000.jpg", "clip": "cones_2"}]}
+
+    entries, _ = build_dataset.plan_frames(manifest, {"cones_2": "train"}, [], {"cones_2_f00000": "1 0.5 0.5 0.1 0.3\n"}, {"cones_2_f00660"})
+
+    assert [(entry["file"], entry["label"]) for entry in entries] == [("cones_2_f00660.jpg", ""), ("cones_2_f00000.jpg", "1 0.5 0.5 0.1 0.3\n")]
+
+
+def test_plan_frames_rejects_unknown_empty_frames():
+    manifest = {"frames": [{"file": "cones_2_f00000.jpg", "clip": "cones_2"}]}
+
+    with pytest.raises(ValueError, match="not in this session"):
+        build_dataset.plan_frames(manifest, {"cones_2": "train"}, [], {"cones_2_f00000": ""}, {"cones_2_f99999"})
+
+
+def test_clip_label_text_fixes_rounding_overshoot():
+    text, clipped = build_dataset.clip_label_text("2 0.900000 0.5 0.200001 0.2\n0 0.5 0.5 0.2 0.2\n")
+
+    assert clipped == 1
+    first = [float(value) for value in text.splitlines()[0].split()[1:]]
+    assert first[0] + first[2] / 2 <= 1.0
+    assert text.splitlines()[1] == "0 0.500000 0.500000 0.200000 0.200000"
+
+
+def test_clip_label_text_rejects_real_overshoot():
+    with pytest.raises(ValueError, match="outside the image"):
+        build_dataset.clip_label_text("2 0.95 0.5 0.2 0.2\n")
+
+
+def test_failed_build_leaves_no_partial_output(tmp_path, monkeypatch):
+    monkeypatch.setattr(build_dataset, "RAW_ROOT", tmp_path / "raw")
+    monkeypatch.setattr(build_dataset, "TEST_CLIP_RESULTS", tmp_path / "no_results")
+    monkeypatch.setattr(build_dataset, "validate_dataset", lambda root, require_images: (["forced failure"], {}))
+
+    make_base_dataset(tmp_path / "v1")
+    make_session(tmp_path / "raw", "s1", ["empty_1"])
+
+    plan = {
+        "base": {"dataset": str(tmp_path / "v1"), "splits": {"train": "train", "val": "val", "test": "test"}},
+        "sessions": [{"session": "s1", "clips": {"empty_1": "train"}}],
+        "background_clips": ["empty*"],
+    }
+
+    with pytest.raises(SystemExit):
+        run_build(tmp_path, monkeypatch, plan)
+
+    assert not (tmp_path / "v2").exists()
+    assert not any(path.name.endswith(".building") for path in tmp_path.iterdir())

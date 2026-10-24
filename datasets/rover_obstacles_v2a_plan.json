@@ -1,0 +1,8 @@
+{
+  "description": "edgesight-ml-v2 candidate A (ablation): v1 stock data plus background frames from empty_2 only, to measure what negatives alone change. No labeling needed.",
+  "base": {"dataset": "datasets/rover_obstacles", "splits": {"train": "train", "val": "val", "test": "test"}},
+  "sessions": [
+    {"session": "session_004", "clips": {"empty_2": "train"}}
+  ],
+  "background_clips": ["empty*"]
+}

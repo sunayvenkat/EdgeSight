@@ -180,6 +180,7 @@ def main():
     parser.add_argument("--threads", type=int, default=config.ONNX_INTRA_OP_THREADS)
     parser.add_argument("--model", type=Path, default=None, help="Candidate .onnx model (default: the released models/selected.onnx)")
     parser.add_argument("--name", default=None, help="Output name (default: the video's file name)")
+    parser.add_argument("--role", choices=["test", "diagnostic"], default="test", help="test: a held-out test clip (scripts/build_dataset.py refuses to train on it); diagnostic: training footage analyzed for reference")
 
     args = parser.parse_args()
 
@@ -202,6 +203,7 @@ def main():
 
     report = {
         "video": str(args.video),
+        "role": args.role,
         "video_sha256": sha256_file(args.video),
         "model": str(model_path),
         "onnx_sha256": sha256_file(model_path),

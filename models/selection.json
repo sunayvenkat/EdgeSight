@@ -1,19 +1,31 @@
 {
-  "release": "edgesight-ml-v1",
-  "selected_experiment": "pilot_v2_data",
+  "release": "edgesight-ml-v2",
+  "selected_experiment": "pilot_v3_real",
   "classes": [
     "rock",
     "cone",
     "debris"
   ],
-  "checkpoint_sha256": "8ef59097dee4889acc8fd327b48fb64547b7f4ba372740fddee6161099a23b9f",
+  "checkpoint_sha256": "b4a4b6dedfe855ce252c8f9f2499996f5ca4b7d808f4fedbcea636740afedcb4",
   "split_lock_sha256": "fd3234a51aafdf6611e982714c8b69f70946fa46c173dc42ee8696a34ab49ffc",
   "selection_metric": "validation_mAP50_95",
   "validation": {
     "images": 21,
-    "precision": 0.6144,
-    "recall": 0.5822,
-    "mAP50": 0.6261,
-    "mAP50_95": 0.3755
+    "precision": 0.774,
+    "recall": 0.614,
+    "mAP50": 0.6871,
+    "mAP50_95": 0.4411
+  },
+  "dataset": "rover_obstacles_v2",
+  "imgsz": 640,
+  "candidates": {
+    "v1": {
+      "mAP50_95": 0.3914,
+      "recall": 0.6115
+    },
+    "pilot_v3_real": {
+      "mAP50_95": 0.4411,
+      "recall": 0.614
+    }
   }
 }

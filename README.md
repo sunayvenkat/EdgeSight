@@ -150,7 +150,7 @@ docs/                    Project documentation and results
 | [training.md](docs/training.md) | Training runs pilot_v1 and pilot_v2_data: settings and training curves |
 | [evaluation.md](docs/evaluation.md) | Error analysis of the first model (pilot_v1) and the resulting improvement plan |
 | [experiments.md](docs/experiments.md) | Data-expansion experiment comparing pilot_v1 and pilot_v2_data on a common validation set |
-| [model_card.md](docs/model_card.md) | The released model (edgesight-ml-v1): data, metrics, reproducibility, and limitations |
+| [model_card.md](docs/model_card.md) | The released model (edgesight-ml-v2) and its predecessor: data, metrics, reproducibility, and limitations |
 | [benchmarks.md](docs/benchmarks.md) | PyTorch CPU inference baseline |
 | [onnx_results.md](docs/onnx_results.md) | ONNX export, prediction consistency, runtime tuning, and native C++ results |
 | [inference_optimization.md](docs/inference_optimization.md) | Inference size 416 vs 512 vs 640: accuracy and camera-pipeline performance |
@@ -163,9 +163,11 @@ docs/                    Project documentation and results
 
 ## Key Results
 
-All figures are from the docs linked above; see them for methodology and limitations. The dataset is small (75 images), so accuracy figures are preliminary.
+All figures are from the docs linked above; see them for methodology and limitations. The datasets are small, so accuracy figures are preliminary.
 
-- **Model accuracy** ([model_card.md](docs/model_card.md)): the released model reaches validation mAP50 0.6261 and mAP50-95 0.3755 on 21 images (precision 0.6144, recall 0.5822). The held-out test split has only 3 images, too few for reliable claims.
+- **Real-world retraining** ([retraining.md](docs/retraining.md), [video_evaluation.md](docs/video_evaluation.md)): v1, trained on stock photos, gave false CAUTION warnings in 46.4% of frames on an obstacle-free sidewalk. edgesight-ml-v2 adds labeled frames and obstacle-free background frames from real footage. On held-out test clips it cut false CAUTION to 1.4%, and raised debris detection from 47.9% to 76.6% and rock detection from 84.5% to 92.2%. Cone detection rose from 18.6% to 45.9%, short of its 70% target; that is planned for v2.1.
+- **Model accuracy** ([model_card.md](docs/model_card.md)): edgesight-ml-v2 reaches stock-photo validation mAP50 0.6871 and mAP50-95 0.4411 at image size 640 (v1: 0.6115 and 0.3914).
+- **What background frames alone do** ([retraining.md](docs/retraining.md)): an ablation trained with background frames but no new labels removed every false alarm but also stopped detecting debris (47.9% to 0%). Labeled real-world positives were needed as well.
 - **More data helped** ([experiments.md](docs/experiments.md)): growing the training set from 21 to 51 images raised validation mAP50 from 0.4667 to 0.6261 and recall from 0.4342 to 0.5822. Debris remains the weakest class (mAP50 0.274).
 - **ONNX matches PyTorch exactly** ([onnx_results.md](docs/onnx_results.md)): all 66 of 66 detections on the validation images matched, with mean box IoU 1.000.
 - **Tuned inference** ([onnx_results.md](docs/onnx_results.md)): the tuned ONNX Runtime session reached an 11.2 ms median in direct-session timing, and native C++ inference reached 13.8–26.6 ms medians with outputs identical to the Python reference.
