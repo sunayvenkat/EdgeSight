@@ -32,6 +32,9 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 # Clips evaluated in docs/video_evaluation.md; they must never be used for training
 TEST_CLIP_RESULTS = PROJECT_ROOT / "runs" / "video_analysis"
 
+# Labeled test sets, including scenes held out of training clips (scripts/build_testset.py)
+TESTSET_PLAN = PROJECT_ROOT / "datasets" / "testset_plan.json"
+
 
 def resolve(path) -> Path:
     path = Path(path)
@@ -172,7 +175,12 @@ def clip_label_text(text, tolerance=1e-4):
     return "".join(line + "\n" for line in lines), clipped
 
 
-def plan_frames(session_manifest, clip_splits, background_patterns, labels, empty_frames=()):
+def in_ranges(frame_index, ranges):
+    """True if frame_index is in any [start, end) range; an end of None runs to the end of the clip."""
+    return any(start <= frame_index and (end is None or frame_index < end) for start, end in ranges)
+
+
+def plan_frames(session_manifest, clip_splits, background_patterns, labels, empty_frames=(), exclude_ranges=None):
     """
     Decide each frame's split and label text.
 
@@ -181,7 +189,16 @@ def plan_frames(session_manifest, clip_splits, background_patterns, labels, empt
     which CVAT exports as no file), get an empty label. Any other frame
     without a CVAT label is an error, so a missed export cannot silently turn
     objects into backgrounds.
+
+    exclude_ranges maps a clip to frame ranges left out entirely, such as a
+    scene inside a training clip that is held back for testing.
     """
+    exclude_ranges = exclude_ranges or {}
+    unplanned = sorted(set(exclude_ranges) - set(clip_splits))
+
+    if unplanned:
+        raise ValueError(f"exclude_ranges for clips not in the plan: {', '.join(unplanned)}")
+
     frame_stems = {Path(frame["file"]).stem for frame in session_manifest["frames"]}
     unknown = sorted(set(empty_frames) - frame_stems)
 
@@ -196,6 +213,9 @@ def plan_frames(session_manifest, clip_splits, background_patterns, labels, empt
 
         if split is None:
             skipped.add(frame["clip"])
+            continue
+
+        if frame["clip"] in exclude_ranges and in_ranges(frame["frame_index"], exclude_ranges[frame["clip"]]):
             continue
 
         if split not in ("train", "val"):
@@ -213,6 +233,30 @@ def plan_frames(session_manifest, clip_splits, background_patterns, labels, empt
         entries.append({"file": frame["file"], "clip": frame["clip"], "split": split, "label": label})
 
     return entries, sorted(skipped)
+
+
+def load_testsets(path=TESTSET_PLAN):
+    return json.loads(path.read_text(encoding="utf-8"))["testsets"] if path.is_file() else []
+
+
+def held_out_frames(session_name, session_manifest, testsets):
+    """
+    Files of this session's frames that belong to a test set.
+
+    Uses the same clip and exclude_ranges rules as scripts/build_testset.py,
+    so a scene held out of a training clip is caught even when a training
+    plan forgets to exclude it.
+    """
+    held = set()
+
+    for testset in testsets:
+        if testset["session"] != session_name:
+            continue
+
+        ranges = testset.get("exclude_ranges", {})
+        held.update(frame["file"] for frame in session_manifest["frames"] if frame["clip"] in testset["clips"] and not (frame["clip"] in ranges and in_ranges(frame["frame_index"], ranges[frame["clip"]])))
+
+    return held
 
 
 def known_test_clip_hashes() -> set[str]:
@@ -271,6 +315,7 @@ def main():
         parser.error(f"{lock_path} already exists; do not overwrite a split lock")
 
     test_hashes = known_test_clip_hashes()
+    testsets = load_testsets()
     background_patterns = plan.get("background_clips", [])
     planned = []
     clipped_total = 0
@@ -293,7 +338,12 @@ def main():
             labels[stem], clipped = clip_label_text(text)
             clipped_total += clipped
 
-        entries, skipped = plan_frames(manifest, session["clips"], background_patterns, labels, set(session.get("empty_frames", [])))
+        entries, skipped = plan_frames(manifest, session["clips"], background_patterns, labels, set(session.get("empty_frames", [])), session.get("exclude_ranges"))
+        held = held_out_frames(session["session"], manifest, testsets)
+        leaked = sorted(entry["file"] for entry in entries if entry["file"] in held)
+
+        if leaked:
+            raise ValueError(f"{len(leaked)} frames of session {session['session']} belong to a test set in {TESTSET_PLAN.name} (e.g. {leaked[0]}); add exclude_ranges to the plan")
 
         if skipped:
             print(f"Note: session {session['session']} clips not in the plan were skipped: {', '.join(skipped)}")

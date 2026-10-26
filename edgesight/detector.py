@@ -22,7 +22,7 @@ import numpy as np
 import onnxruntime as ort
 from ultralytics import YOLO
 
-from edgesight.config import (DETECTION_CONFIDENCE, INFERENCE_IMAGE_SIZE, MODEL_PATH, NMS_IOU_THRESHOLD, ONNX_INTRA_OP_THREADS, ONNX_MODEL_PATH, RUNTIME_CONFIG_PATH)
+from edgesight.config import (CLASS_CONFIDENCE_PATH, DETECTION_CONFIDENCE, INFERENCE_IMAGE_SIZE, MODEL_PATH, NMS_IOU_THRESHOLD, ONNX_INTRA_OP_THREADS, ONNX_MODEL_PATH, RUNTIME_CONFIG_PATH)
 
 @dataclass(frozen=True)
 class Detection:
@@ -35,17 +35,24 @@ class Detection:
 class ObjectDetector:
     # Runs YOLO inference on video frames
 
-    def __init__(self, model = None, model_path = MODEL_PATH, confidence = DETECTION_CONFIDENCE):
+    def __init__(self, model = None, model_path = MODEL_PATH, confidence = DETECTION_CONFIDENCE, class_confidence = None):
         self.model = (model if model is not None else YOLO(model_path))
+        self.class_confidence = dict(class_confidence or {})
 
-        if not 0.0 <= confidence <= 1.0:
+        if not all(0.0 <= value <= 1.0 for value in (confidence, *self.class_confidence.values())):
             raise ValueError("Confidence must be between 0.0 and 1.0")
         self.confidence = confidence
+
+        # Ultralytics takes one threshold, so predict at the lowest and filter per class
+        self.predict_confidence = min([confidence, *self.class_confidence.values()])
+
+    def passes(self, label, score):
+        return score >= self.class_confidence.get(label, self.confidence)
 
     def detect(self, frame):
         # Return structured detections for a frame
 
-        results = self.model.predict(source=frame, conf=self.confidence, imgsz=INFERENCE_IMAGE_SIZE, device="cpu", verbose=False)
+        results = self.model.predict(source=frame, conf=self.predict_confidence, imgsz=INFERENCE_IMAGE_SIZE, device="cpu", verbose=False)
 
         result = results[0]
         detections = []
@@ -55,12 +62,11 @@ class ObjectDetector:
 
         for box in result.boxes:
             score = float(box.conf[0].item())
-
-            if score < self.confidence:
-                continue
-
             class_id = int(box.cls[0].item())
             label = result.names[class_id]
+
+            if not self.passes(label, score):
+                continue
 
             x1, y1, x2, y2 = (int(value) for value in box.xyxy[0].tolist())
 
@@ -87,6 +93,26 @@ def sha256_file(path) -> str:
             digest.update(chunk)
 
     return digest.hexdigest()
+
+
+def load_class_confidence(model_path, path=CLASS_CONFIDENCE_PATH) -> dict[str, float]:
+    """
+    Per-class cutoffs released with this model, or {} (the single cutoff) when there are none.
+
+    The file records the hashes of the .onnx and .pt files it was tuned for, so
+    a rollback or another model never runs with cutoffs meant for a different one.
+    """
+    path = Path(path)
+
+    if not path.is_file():
+        return {}
+
+    released = json.loads(path.read_text(encoding="utf-8"))
+
+    if sha256_file(model_path) not in (released["onnx_sha256"], released["checkpoint_sha256"]):
+        raise ValueError(f"{path.name} was tuned for a different model. Re-run scripts/tune_confidence.py --release, or remove it to use the single cutoff.")
+
+    return released["classes"]
 
 
 def create_session(model_path=ONNX_MODEL_PATH, runtime_config_path=RUNTIME_CONFIG_PATH, intra_op_threads=ONNX_INTRA_OP_THREADS, verify_hash=True) -> ort.InferenceSession:
@@ -198,8 +224,10 @@ def scale_boxes(boxes: np.ndarray, gain: float, padding: tuple[int, int], frame_
 class OnnxDetector:
     """Runs the exported EdgeSight model with ONNX Runtime."""
 
-    def __init__(self, session=None, confidence: float = DETECTION_CONFIDENCE, iou_threshold: float = NMS_IOU_THRESHOLD) -> None:
-        if not 0.0 <= confidence <= 1.0:
+    def __init__(self, session=None, confidence: float = DETECTION_CONFIDENCE, iou_threshold: float = NMS_IOU_THRESHOLD, class_confidence: dict[str, float] | None = None) -> None:
+        class_confidence = dict(class_confidence or {})
+
+        if not all(0.0 <= value <= 1.0 for value in (confidence, *class_confidence.values())):
             raise ValueError("Confidence must be between 0.0 and 1.0")
 
         if not 0.0 <= iou_threshold <= 1.0:
@@ -221,15 +249,24 @@ class OnnxDetector:
         metadata = self.session.get_modelmeta().custom_metadata_map
         self.names = {int(key): value for key, value in ast.literal_eval(metadata["names"]).items()}
 
+        unknown = sorted(set(class_confidence) - set(self.names.values()))
+
+        if unknown:
+            raise ValueError(f"Class confidence for unknown classes: {unknown}")
+
+        # Cutoff per class ID; NMS is per class, so filtering after it equals filtering before
+        self.cutoffs = np.array([class_confidence.get(self.names[class_id], confidence) for class_id in range(max(self.names) + 1)], dtype=np.float32)
+
     def infer(self, frame: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Return xyxy boxes in frame pixels, scores, and class IDs."""
         tensor, gain, padding = preprocess(frame, self.image_size)
 
         output = self.session.run(None, {self.input_name: tensor})[0]
 
-        boxes, scores, class_ids = decode_output(output, self.confidence, self.iou_threshold)
+        boxes, scores, class_ids = decode_output(output, float(self.cutoffs.min()), self.iou_threshold)
+        keep = scores > self.cutoffs[class_ids]
 
-        return scale_boxes(boxes, gain, padding, frame.shape), scores, class_ids
+        return scale_boxes(boxes[keep], gain, padding, frame.shape), scores[keep], class_ids[keep]
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
         """Return structured detections for a frame."""

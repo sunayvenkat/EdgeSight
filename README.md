@@ -121,6 +121,14 @@ Camera resolution, inference size, confidence and NMS thresholds, the tracker co
 python -m pytest -q
 ```
 
+Tests are grouped by project phase under `tests/phase*/`, with shared fakes in `tests/helpers.py`. To run only the phase being worked on, pass its folder:
+
+```bash
+python -m pytest -q tests/phase6_desktop_completion
+```
+
+Run the full suite before committing: later phases change shared code such as the detector and tracker, which older phases' tests cover.
+
 The tests use synthetic frames, synthetic videos, and fake trackers, so they need no camera. The test that runs the real ONNX model on the validation images is skipped when `models/selected.onnx` or the images are missing.
 
 ## Project Layout
@@ -135,7 +143,7 @@ edgesight/                (modules in pipeline order)
   events.py              Monitoring zone and ENTER/EXIT events
   recorder.py            Saving annotated video (--record)
 scripts/                 Dataset checks, training, evaluation, model selection, ONNX export and tuning, quantization, benchmarks, profiling
-tests/                   pytest suite
+tests/                   pytest suite, one folder per project phase (phase1_foundation ... phase6_desktop_completion)
 cpp/main.cpp             Native C++ ONNX Runtime inference (built with CMakeLists.txt; Windows x64 only for now)
 models/                  Model metadata (*.json); model files are copied in, not committed
 datasets/rover_obstacles/  Dataset config; images and labels are not committed
@@ -150,7 +158,7 @@ docs/                    Project documentation and results
 | [training.md](docs/training.md) | Training runs pilot_v1 and pilot_v2_data: settings and training curves |
 | [evaluation.md](docs/evaluation.md) | Error analysis of the first model (pilot_v1) and the resulting improvement plan |
 | [experiments.md](docs/experiments.md) | Data-expansion experiment comparing pilot_v1 and pilot_v2_data on a common validation set |
-| [model_card.md](docs/model_card.md) | The released model (edgesight-ml-v2) and its predecessor: data, metrics, reproducibility, and limitations |
+| [model_card.md](docs/model_card.md) | The released model (edgesight-ml-v2.1) and its predecessors: data, metrics, reproducibility, and limitations |
 | [benchmarks.md](docs/benchmarks.md) | PyTorch CPU inference baseline |
 | [onnx_results.md](docs/onnx_results.md) | ONNX export, prediction consistency, runtime tuning, and native C++ results |
 | [inference_optimization.md](docs/inference_optimization.md) | Inference size 416 vs 512 vs 640: accuracy and camera-pipeline performance |
@@ -165,8 +173,15 @@ docs/                    Project documentation and results
 
 All figures are from the docs linked above; see them for methodology and limitations. The datasets are small, so accuracy figures are preliminary.
 
-- **Real-world retraining** ([retraining.md](docs/retraining.md), [video_evaluation.md](docs/video_evaluation.md)): v1, trained on stock photos, gave false CAUTION warnings in 46.4% of frames on an obstacle-free sidewalk. edgesight-ml-v2 adds labeled frames and obstacle-free background frames from real footage. On held-out test clips it cut false CAUTION to 1.4%, and raised debris detection from 47.9% to 76.6% and rock detection from 84.5% to 92.2%. Cone detection rose from 18.6% to 45.9%, short of its 70% target; that is planned for v2.1.
-- **Model accuracy** ([model_card.md](docs/model_card.md)): edgesight-ml-v2 reaches stock-photo validation mAP50 0.6871 and mAP50-95 0.4411 at image size 640 (v1: 0.6115 and 0.3914).
+- **Real-world retraining** ([retraining.md](docs/retraining.md), [video_evaluation.md](docs/video_evaluation.md)): v1, trained on stock photos, gave false CAUTION warnings in 46.4% of frames on an obstacle-free sidewalk. edgesight-ml-v2 adds labeled frames and obstacle-free background frames from real footage. On held-out test clips it cut false CAUTION to 1.4%, and raised debris detection from 47.9% to 76.6% and rock detection from 84.5% to 92.2%. Cone detection rose from 18.6% to 45.9%, short of its 70% target.
+- **v2.1** ([model_card.md](docs/model_card.md)): it adds cone footage from five locations, stronger augmentation, and per-class confidence cutoffs chosen by cross-validation by location. It meets every target on the test clips:
+  - cones 81.0%
+  - debris 92.4%
+  - rocks 88.3%
+  - no false CAUTION on the obstacle-free clip
+
+  A second training seed missed the rock and empty-scene targets, so those two results vary between runs.
+- **Model accuracy** ([model_card.md](docs/model_card.md)): edgesight-ml-v2.1 reaches stock-photo validation mAP50 0.709 and mAP50-95 0.487 at image size 640 (v2: 0.687 and 0.441; v1: 0.612 and 0.391).
 - **What background frames alone do** ([retraining.md](docs/retraining.md)): an ablation trained with background frames but no new labels removed every false alarm but also stopped detecting debris (47.9% to 0%). Labeled real-world positives were needed as well.
 - **More data helped** ([experiments.md](docs/experiments.md)): growing the training set from 21 to 51 images raised validation mAP50 from 0.4667 to 0.6261 and recall from 0.4342 to 0.5822. Debris remains the weakest class (mAP50 0.274).
 - **ONNX matches PyTorch exactly** ([onnx_results.md](docs/onnx_results.md)): all 66 of 66 detections on the validation images matched, with mean box IoU 1.000.

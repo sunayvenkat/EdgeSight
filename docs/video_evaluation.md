@@ -107,3 +107,21 @@ The recommendations above were carried out (`docs/retraining.md`). Training adde
 Sources: `runs/video_analysis/{cones,rocks,debris,empty}.json` (v1) and `runs/video_analysis/b_*.json` (v2).
 
 v2 meets the empty-scene, debris, and rock targets but not the cone target of 70%. Its remaining false positives are mostly isolated single leaves and a drainage grate labeled debris. Both are planned for v2.1.
+
+## Follow-Up: edgesight-ml-v2.1 (2026-10-26)
+
+v2.1 (`pilot_v5_final`) adds cone footage from five new locations, trains with stronger augmentation for a fixed 40 epochs, and uses per-class confidence cutoffs chosen by cross-validation. The same four clips were scored once:
+
+| Clip | Measure | v2 | v2.1 |
+|---|---|---:|---:|
+| empty | False-positive frames | 1.6% | 1.9% |
+| empty | CAUTION frames | 1.4% | 0.0% |
+| debris | Debris detected | 76.6% | 92.4% |
+| rocks | Rock detected | 92.2% | 88.3% |
+| cones | Cone detected (delineator posts) | 45.9% | 81.0% |
+
+Sources: `runs/video_analysis/b_*.json` (v2) and `runs/video_analysis/d_*.json` (v2.1).
+
+- **Every target is met,** including cones, for the first time.
+- **Run-to-run variance:** a second training seed (`d7_*.json`) missed the rock and empty-scene targets, so those two results vary between training runs (`docs/model_card.md`).
+- **Single leaves:** since v2.1, isolated single leaves on clear ground count as debris, so some debris detections on the rock clip are now intended.

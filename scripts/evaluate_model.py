@@ -5,8 +5,10 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
 from ultralytics import YOLO
 
+from scripts.build_dataset import CLASS_NAMES
 from scripts.train_model import (
     PROJECT_ROOT,
     DATASET_ROOT,
@@ -73,13 +75,33 @@ def build_report(metrics, checkpoint, image_count, split="val", dataset=None, im
     return report
 
 
-def evaluate_model(checkpoint_path, run_name, dataset_root=DATASET_ROOT, imgsz=512, split="val"):
+def operating_point(box, class_confidence):
+    """Per-class precision and recall at the given cutoffs, read from Ultralytics' confidence curves (IoU 0.5)."""
+    names = {int(class_id): index for index, class_id in enumerate(box.ap_class_index)}
+    result = {}
+
+    for class_id, name in CLASS_NAMES.items():
+        if class_id not in names or name not in class_confidence:
+            continue
+
+        cutoff = class_confidence[name]
+        row = names[class_id]
+        result[name] = {"cutoff": cutoff, "precision": round(float(np.interp(cutoff, box.px, box.p_curve[row])), 4), "recall": round(float(np.interp(cutoff, box.px, box.r_curve[row])), 4)}
+
+    return result
+
+
+def evaluate_model(checkpoint_path, run_name, dataset_root=DATASET_ROOT, imgsz=512, split="val", class_confidence=None):
     # Evaluates the trained model on the images
 
     checkpoint = resolve_checkpoint(checkpoint_path)
     dataset_root = Path(dataset_root)
 
-    errors, counts = validate_dataset(dataset_root, require_images=True)
+    # Only the evaluated split needs images; test sets have empty train and val splits
+    errors, counts = validate_dataset(dataset_root)
+
+    if not errors and not counts.get(split):
+        errors = [f"No {split} images in {dataset_root}"]
 
     if errors:
         raise ValueError("Dataset validation failed:\n" + "\n".join(errors))
@@ -114,6 +136,9 @@ def evaluate_model(checkpoint_path, run_name, dataset_root=DATASET_ROOT, imgsz=5
     )
 
     report = build_report(metrics, checkpoint, counts[split], split=split, dataset=dataset_root.name, imgsz=imgsz)
+
+    if class_confidence:
+        report["at_class_confidence"] = operating_point(metrics.box, class_confidence)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -150,12 +175,20 @@ def main():
     parser.add_argument("--dataset", type=Path, default=DATASET_ROOT, help="Dataset folder (default: datasets/rover_obstacles, the v1 data)")
     parser.add_argument("--imgsz", type=int, default=512, help="Evaluation image size (default: %(default)s, as used for v1; v2 uses 640)")
     parser.add_argument("--split", choices=["val", "test"], default="val")
+    parser.add_argument("--confidence", type=float, default=None, help="Also report per-class precision and recall at this single cutoff")
+    parser.add_argument("--class-confidence", type=Path, default=None, help="Also report them at per-class cutoffs from scripts/tune_confidence.py")
 
     args = parser.parse_args()
 
     dataset = args.dataset if args.dataset.is_absolute() else PROJECT_ROOT / args.dataset
+    class_confidence = None
 
-    evaluate_model(checkpoint_path=args.weights, run_name=args.name, dataset_root=dataset, imgsz=args.imgsz, split=args.split)
+    if args.class_confidence is not None:
+        class_confidence = {name: row["cutoff"] for name, row in json.loads(args.class_confidence.read_text(encoding="utf-8"))["classes"].items()}
+    elif args.confidence is not None:
+        class_confidence = {name: args.confidence for name in CLASS_NAMES.values()}
+
+    evaluate_model(checkpoint_path=args.weights, run_name=args.name, dataset_root=dataset, imgsz=args.imgsz, split=args.split, class_confidence=class_confidence)
 
 
 if __name__ == "__main__":

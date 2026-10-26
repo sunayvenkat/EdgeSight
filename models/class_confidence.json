@@ -1,0 +1,10 @@
+{
+  "source": "runs/cv/confidence_tuning_long_aug.json",
+  "onnx_sha256": "bb7018966e61caec79b69ca05fce146fd76fae05aedadfb00a3b5826c81da239",
+  "checkpoint_sha256": "04d2d6988d7b6f28d90f9a3a278c63c83c8053a3e9e0c482fe1dfd27cdd79be0",
+  "classes": {
+    "rock": 0.502,
+    "cone": 0.232,
+    "debris": 0.231
+  }
+}

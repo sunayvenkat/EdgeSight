@@ -1,0 +1,32 @@
+{
+  "description": "Labeled test sets for scoring candidate models. Never train on these frames. Built by scripts/build_testset.py.",
+  "testsets": [
+    {
+      "name": "test_clips",
+      "output": "datasets/rover_obstacles_test/test_clips",
+      "session": "testset_001",
+      "labels": "datasets/rover_obstacles/raw/testset_001/new_labels_export.zip",
+      "clips": ["cones", "rocks", "debris", "empty"],
+      "empty_frames": [
+        "cones_f00000",
+        "cones_f00015",
+        "cones_f00045",
+        "cones_f00060",
+        "cones_f00075",
+        "cones_f00465",
+        "debris_f00585"
+      ],
+      "empty_frames_note": "Labeled by the user in CVAT on 2026-10-26 and left with no boxes (cones not yet in view, or bare sidewalk); CVAT's YOLO export writes no file for them, but lists them in train.txt."
+    },
+    {
+      "name": "track_fence",
+      "output": "datasets/rover_obstacles_test/track_fence",
+      "session": "session_005",
+      "labels": "datasets/rover_obstacles/raw/session_005/more_cones_export.zip",
+      "clips": ["more_cones"],
+      "exclude_ranges": {"more_cones": [[0, 1430], [1960, null]]},
+      "exclude_ranges_note": "Keeps only frames 1430-1960: traffic cones behind the running-track fence, a benchmark for distant and occluded cones (user decision 2026-10-26). Scored on its own, not toward the cone target."
+    }
+  ],
+  "background_clips": ["empty"]
+}

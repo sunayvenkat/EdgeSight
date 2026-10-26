@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-from scripts.build_dataset import CLASS_NAMES, IMAGE_EXTENSIONS, clip_label_text, known_test_clip_hashes, read_cvat_export, remove_label_lines
+from scripts.build_dataset import CLASS_NAMES, IMAGE_EXTENSIONS, clip_label_text, held_out_frames, in_ranges, known_test_clip_hashes, load_testsets, read_cvat_export, remove_label_lines
 from scripts.evaluate_model import build_report
 from scripts.extract_frames import MANIFEST_NAME, RAW_ROOT
 from scripts.validate_dataset import validate_dataset
@@ -55,9 +55,7 @@ def group_for(frame, groups):
         if group["clip"] != frame["clip"]:
             continue
 
-        ranges = group.get("ranges") or [[0, None]]
-
-        if any(start <= frame["frame_index"] and (end is None or frame["frame_index"] < end) for start, end in ranges):
+        if in_ranges(frame["frame_index"], group.get("ranges") or [[0, None]]):
             matches.append(group["group"])
 
     if len(matches) != 1:
@@ -69,6 +67,7 @@ def group_for(frame, groups):
 def assign_groups(plan):
     """Every labeled real-world frame with its group and final label text."""
     test_hashes = known_test_clip_hashes()
+    testsets = load_testsets()
     entries = []
 
     for session in plan["sessions"]:
@@ -82,6 +81,7 @@ def assign_groups(plan):
         labels = remove_label_lines(read_cvat_export(resolve(session["labels"])), session.get("remove_boxes", {}))
         labels = {stem: clip_label_text(text)[0] for stem, text in labels.items()}
         empty_frames = set(session.get("empty_frames", []))
+        held = held_out_frames(session["session"], manifest, testsets)
 
         for frame in manifest["frames"]:
             stem = Path(frame["file"]).stem
@@ -93,7 +93,7 @@ def assign_groups(plan):
             else:
                 raise ValueError(f"No label for {frame['file']}")
 
-            entries.append({"path": session_dir / frame["file"], "group": group_for(frame, session["groups"]), "label": label})
+            entries.append({"path": session_dir / frame["file"], "group": group_for(frame, session["groups"]), "label": label, "held_out": frame["file"] in held})
 
     return entries
 
@@ -108,6 +108,10 @@ def split_fold(entries, fold, reserved):
 
     val = [entry for entry in entries if entry["group"] in fold["val_groups"]]
     train = [entry for entry in entries if entry["group"] not in fold["val_groups"] and entry["group"] not in reserved]
+    leaked = [entry["path"].name for entry in train + val if entry.get("held_out")]
+
+    if leaked:
+        raise ValueError(f"{fold['name']}: {len(leaked)} test-set frames (e.g. {leaked[0]}); reserve their group in reserved_groups")
 
     return train, val
 

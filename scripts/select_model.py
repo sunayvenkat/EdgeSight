@@ -21,7 +21,7 @@ MODELS_ROOT = PROJECT_ROOT / "models"
 LOCK_PATH = PROJECT_ROOT / "docs" / "split_lock.json"
 
 # Files that make up a release; --archive moves them to models/archive/<release>/
-RELEASE_FILES = ("selected.pt", "selected.onnx", "selection.json", "onnx_manifest.json", "runtime_config.json")
+RELEASE_FILES = ("selected.pt", "selected.onnx", "selection.json", "onnx_manifest.json", "runtime_config.json", "class_confidence.json")
 
 
 def sha256_file(path):

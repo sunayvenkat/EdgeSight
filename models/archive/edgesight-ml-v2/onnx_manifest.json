@@ -1,0 +1,22 @@
+{
+  "source_checkpoint": "C:\\Users\\sunay\\OneDrive\\Documents\\GitHub\\EdgeSight\\models\\selected.pt",
+  "source_sha256": "b4a4b6dedfe855ce252c8f9f2499996f5ca4b7d808f4fedbcea636740afedcb4",
+  "onnx_checkpoint": "C:\\Users\\sunay\\OneDrive\\Documents\\GitHub\\EdgeSight\\models\\selected.onnx",
+  "onnx_sha256": "4df05391b598e7094c62dc0e92b440ceb1bace503ed997ae96ad521b9c94e5dc",
+  "source_bytes": 5451077,
+  "onnx_bytes": 9854351,
+  "input_name": "images",
+  "input_shape": [
+    1,
+    3,
+    640,
+    640
+  ],
+  "providers": [
+    "CPUExecutionProvider"
+  ],
+  "dynamic": false,
+  "batch": 1,
+  "imgsz": 640,
+  "simplify": true
+}

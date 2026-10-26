@@ -1,5 +1,5 @@
 {
-  "description": "Cross-validation by location (grouped 2-fold) for v2.1 training settings. Each group is one location. track_fence is reserved (excluded) as a possible test scene pending the user's decision.",
+  "description": "Cross-validation by location (grouped 2-fold) for v2.1 training settings. Each group is one location. track_fence is a test scene (user decision 2026-10-26), so it is reserved and excluded from every fold.",
   "base": {
     "dataset": "datasets/rover_obstacles",
     "split": "train"

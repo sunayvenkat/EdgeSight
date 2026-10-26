@@ -73,23 +73,26 @@ def create_tracker(backend=None, threads=None, model=None):
     backend = config.INFERENCE_BACKEND if backend is None else backend
 
     if backend == "onnx":
-        from edgesight.detector import OnnxDetector, create_session
+        from edgesight.detector import OnnxDetector, create_session, load_class_confidence
         from edgesight.tracker import OnnxTracker
 
         intra_op_threads = config.ONNX_INTRA_OP_THREADS if threads is None else threads
 
+        # Candidates run at the single cutoff; released cutoffs belong to the released model
         if model is None:
             session = create_session(intra_op_threads=intra_op_threads)
+            class_confidence = load_class_confidence(config.ONNX_MODEL_PATH)
         else:
             session = create_session(model_path=model, intra_op_threads=intra_op_threads, verify_hash=False)
+            class_confidence = {}
 
-        return OnnxTracker(OnnxDetector(session=session))
+        return OnnxTracker(OnnxDetector(session=session, class_confidence=class_confidence))
 
     if backend == "pytorch":
-        from edgesight.detector import ObjectDetector
+        from edgesight.detector import ObjectDetector, load_class_confidence
         from edgesight.tracker import ObjectTracker
 
-        return ObjectTracker(ObjectDetector() if model is None else ObjectDetector(model_path=model))
+        return ObjectTracker(ObjectDetector(class_confidence=load_class_confidence(config.MODEL_PATH)) if model is None else ObjectDetector(model_path=model))
 
     raise ValueError(f"Unknown inference backend: {backend!r}")
 

@@ -47,7 +47,7 @@ def training_config_path(dataset_root):
 
     return RUNS_ROOT / "configs" / f"{dataset_root.name}_training.yaml"
 
-def train_model(epochs, imgsz, batch, device, name, dataset_root=DATASET_ROOT, seed=42):
+def train_model(epochs, imgsz, batch, device, name, dataset_root=DATASET_ROOT, seed=42, settings=None):
     # Validate the dataset and fine-tune YOLO
     errors, counts = validate_dataset(dataset_root, require_images=True)
 
@@ -70,6 +70,9 @@ def train_model(epochs, imgsz, batch, device, name, dataset_root=DATASET_ROOT, s
 
     print("Starting transfer learning... ")
 
+    # settings (augmentation, patience) override the v1 defaults below
+    train_settings = {"mosaic": 0.5, "patience": 10, **(settings or {})}
+
     model.train(
         data=str(training_yaml),
         epochs=epochs,
@@ -80,15 +83,14 @@ def train_model(epochs, imgsz, batch, device, name, dataset_root=DATASET_ROOT, s
         seed=seed,
         optimizer="AdamW",
         lr0=0.001,
-        mosaic=0.5,
         mixup=0.0,
         copy_paste=0.0,
-        patience=10,
         plots=True,
         save=True,
         project=str(RUNS_ROOT / "train"),
         name=name,
         exist_ok=False,
+        **train_settings,
     )
 
     print("Training completed!")
@@ -105,11 +107,27 @@ def main():
     parser.add_argument("--name", default="pilot_v1")
     parser.add_argument("--dataset", type=Path, default=DATASET_ROOT, help="Dataset folder (default: datasets/rover_obstacles, the v1 data)")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--config", default=None, help="Augmentation settings from a scripts/cross_validate.py config, e.g. long_aug (its epochs and patience are not used)")
+    parser.add_argument("--fixed-epochs", action="store_true", help="Train every epoch without early stopping; use last.pt, since stock-photo validation picks best.pt poorly")
 
     args = parser.parse_args()
 
     if args.epochs < 1 or args.batch < 1 or args.imgsz < 32:
         parser.error("Invalid training parameters")
+
+    settings = {}
+
+    if args.config:
+        # Imported here: cross_validate imports evaluate_model, which imports this module
+        from scripts.cross_validate import CONFIGS
+
+        if args.config not in CONFIGS:
+            parser.error(f"--config must be one of {', '.join(CONFIGS)}")
+
+        settings = {key: value for key, value in CONFIGS[args.config]["train"].items() if key not in ("epochs", "patience")}
+
+    if args.fixed_epochs:
+        settings["patience"] = 0
 
     train_model(
         epochs=args.epochs,
@@ -119,6 +137,7 @@ def main():
         name=args.name,
         dataset_root=args.dataset if args.dataset.is_absolute() else PROJECT_ROOT / args.dataset,
         seed=args.seed,
+        settings=settings,
     )
 
 if __name__ == "__main__":

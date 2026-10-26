@@ -1,4 +1,4 @@
-
+"""Phase 6: real-world retraining data (6.7, 6.8): frame extraction, pre-labeling, dataset and test-set builds."""
 
 import json
 import sys
@@ -29,8 +29,6 @@ def write_video(path, values, size=(160, 90), fps=30.0):
 
     return path
 
-
-# extract_frames
 
 def make_candidate(index, score, value):
     return (index, score, np.full((36, 64), value, dtype=np.float32))
@@ -96,8 +94,6 @@ def test_extract_frames_refuses_existing_session(tmp_path, monkeypatch):
         extract_frames.main()
 
 
-# prelabel
-
 def test_to_yolo_lines_normalizes_and_clips():
     lines = to_yolo_lines([(-10, 20, 110, 70), (50, 50, 50, 60)], [2, 0], (100, 100))
 
@@ -128,8 +124,6 @@ def test_cvat_packages_round_trip(tmp_path):
     # build_dataset reads the same format back, including the empty label
     assert build_dataset.read_cvat_export(annotations_zip) == {"rock_1_f00000": "0 0.5 0.5 0.2 0.2\n", "rock_1_f00015": ""}
 
-
-# build_dataset
 
 def write_cvat_export(path, names, labels):
     (path / "labels" / "train").mkdir(parents=True)
@@ -314,6 +308,18 @@ def test_plan_frames_rejects_unknown_empty_frames():
         build_dataset.plan_frames(manifest, {"cones_2": "train"}, [], {"cones_2_f00000": ""}, {"cones_2_f99999"})
 
 
+def test_plan_frames_leaves_out_excluded_ranges():
+    manifest = {"frames": [{"file": f"more_cones_f{index:05d}.jpg", "clip": "more_cones", "frame_index": index} for index in (1415, 1430, 1945, 1960)]}
+    labels = {frame["file"].removesuffix(".jpg"): "" for frame in manifest["frames"]}
+
+    entries, _ = build_dataset.plan_frames(manifest, {"more_cones": "train"}, [], labels, exclude_ranges={"more_cones": [[1430, 1960]]})
+
+    assert [entry["file"] for entry in entries] == ["more_cones_f01415.jpg", "more_cones_f01960.jpg"]
+
+    with pytest.raises(ValueError, match="not in the plan"):
+        build_dataset.plan_frames(manifest, {"more_cones": "train"}, [], labels, exclude_ranges={"other": [[0, None]]})
+
+
 def test_clip_label_text_fixes_rounding_overshoot():
     text, clipped = build_dataset.clip_label_text("2 0.900000 0.5 0.200001 0.2\n0 0.5 0.5 0.2 0.2\n")
 
@@ -390,3 +396,28 @@ def test_read_cvat_export_detects_xml_in_zip(tmp_path):
         handle.writestr("annotations.xml", CVAT_XML)
 
     assert set(build_dataset.read_cvat_export(archive)) == {"more_cones_f00000", "more_cones_f00030"}
+
+
+def test_build_testset_puts_every_frame_in_test(tmp_path, monkeypatch):
+    import scripts.build_testset as build_testset
+
+    session = tmp_path / "raw" / "s"
+    session.mkdir(parents=True)
+    frames = [("a", 0), ("a", 15), ("empty", 0)]
+
+    for clip, index in frames:
+        cv2.imwrite(str(session / f"{clip}_f{index:05d}.jpg"), np.zeros((32, 32, 3), dtype=np.uint8))
+
+    (session / "frames.json").write_text(json.dumps({"frames": [{"file": f"{clip}_f{index:05d}.jpg", "clip": clip, "frame_index": index} for clip, index in frames]}))
+    export = tmp_path / "export"
+    (export / "labels" / "train").mkdir(parents=True)
+    (export / "data.yaml").write_text("names:\n  0: Rock\n  1: Cone\n  2: Debris\n")
+    (export / "labels" / "train" / "a_f00000.txt").write_text("1 0.5 0.5 0.1 0.1\n")
+    monkeypatch.setattr(build_testset, "RAW_ROOT", tmp_path / "raw")
+
+    output = build_testset.build_testset({"name": "t", "output": str(tmp_path / "out"), "session": "s", "labels": str(export), "clips": ["a", "empty"], "empty_frames": ["a_f00015"]}, ["empty"])
+
+    assert sorted(path.name for path in (output / "images" / "test").iterdir()) == ["a_f00000.jpg", "a_f00015.jpg", "empty_f00000.jpg"]
+    assert not any((output / "images" / "train").iterdir())
+    assert (output / "labels" / "test" / "a_f00000.txt").read_text() == "1 0.500000 0.500000 0.100000 0.100000\n"
+    assert (output / "labels" / "test" / "empty_f00000.txt").read_text() == ""

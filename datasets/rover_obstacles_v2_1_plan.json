@@ -95,7 +95,7 @@
           1
         ]
       },
-      "remove_boxes_note": "Single leaves boxed as debris in mixed_2 (#8-#36 in datasets/rover_obstacles/raw/session_004/debris_review/); removed 2026-10-25 pending user confirmation."
+      "remove_boxes_note": "Single leaves boxed as debris in mixed_2 (#8-#36 in datasets/rover_obstacles/raw/session_004/debris_review/), inside leaf-covered ground, which is terrain; removal confirmed by the user 2026-10-26."
     },
     {
       "session": "session_005",

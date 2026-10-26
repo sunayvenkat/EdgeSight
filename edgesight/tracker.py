@@ -22,13 +22,13 @@ class TrackedObject:
 
 class ObjectTracker:
     def __init__(self, detector):
+        self.detector = detector
         self.model = detector.model
-        self.confidence = detector.confidence
 
     def track(self, frame):
         # Detect and associate objects across frames
 
-        results = self.model.track(source=frame, persist=True, tracker=TRACKER_CONFIG, conf=self.confidence, imgsz=INFERENCE_IMAGE_SIZE, device="cpu", verbose=False)
+        results = self.model.track(source=frame, persist=True, tracker=TRACKER_CONFIG, conf=self.detector.predict_confidence, imgsz=INFERENCE_IMAGE_SIZE, device="cpu", verbose=False)
 
         result = results[0]
 
@@ -46,6 +46,10 @@ class ObjectTracker:
 
             class_id = int(box.cls[0].item())
             confidence = float(box.conf[0].item())
+
+            # shortcut: per-class cutoffs apply after tracking here, unlike the ONNX path, so tracks may form on hidden boxes; filter before tracking if the backends must match exactly
+            if not self.detector.passes(result.names[class_id], confidence):
+                continue
 
             x1, y1, x2, y2 = (int(value) for value in box.xyxy[0].tolist())
 

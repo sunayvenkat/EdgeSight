@@ -35,6 +35,11 @@ ONNX_INTRA_OP_THREADS = 4
 # Minimum confidence to make a detection
 DETECTION_CONFIDENCE = 0.40
 
+# Per-class cutoffs released with the model (scripts/tune_confidence.py --release).
+# They replace DETECTION_CONFIDENCE for the listed classes and apply only to the
+# model files whose hashes they record; without the file, every class uses the single cutoff.
+CLASS_CONFIDENCE_PATH = str(Path(__file__).resolve().parents[1] / "models" / "class_confidence.json")
+
 # IoU threshold for non-maximum suppression (matches Ultralytics' default)
 NMS_IOU_THRESHOLD = 0.7
 

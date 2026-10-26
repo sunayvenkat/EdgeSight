@@ -1,3 +1,5 @@
+"""Phase 6: INT8 quantization (6.4)."""
+
 import json
 from pathlib import Path
 
@@ -7,19 +9,16 @@ import onnx
 import pytest
 from onnx import helper
 
-from scripts.quantize_onnx import (
-    ImageCalibrationReader,
-    copy_metadata,
-    count_quantized,
-    list_calibration_images,
-    select_nodes_to_exclude,
-    update_manifest,
-)
 from scripts.evaluate_quantization import summarize_consistency, to_records
+from scripts.quantize_onnx import ImageCalibrationReader, copy_metadata, count_quantized, list_calibration_images, select_nodes_to_exclude, update_manifest
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
 FP32_PATH = PROJECT_ROOT / "models" / "selected.onnx"
+
+
 INT8_PATH = PROJECT_ROOT / "models" / "selected_int8_u8_no_head.onnx"
 
 

@@ -12,7 +12,7 @@ from collections import Counter
 from pathlib import Path
 
 from edgesight import config
-from edgesight.detector import OnnxDetector, create_session, sha256_file
+from edgesight.detector import OnnxDetector, create_session, load_class_confidence, sha256_file
 from edgesight.events import ZoneMonitor
 from edgesight.sources import VideoFileSource
 from edgesight.tracker import OnnxTracker
@@ -181,8 +181,14 @@ def main():
     parser.add_argument("--model", type=Path, default=None, help="Candidate .onnx model (default: the released models/selected.onnx)")
     parser.add_argument("--name", default=None, help="Output name (default: the video's file name)")
     parser.add_argument("--role", choices=["test", "diagnostic"], default="test", help="test: a held-out test clip (scripts/build_dataset.py refuses to train on it); diagnostic: training footage analyzed for reference")
+    parser.add_argument("--class-confidence", type=Path, default=None, help="Per-class cutoffs from scripts/tune_confidence.py (default: the released model's cutoffs; none for --model)")
 
     args = parser.parse_args()
+
+    if args.class_confidence is not None:
+        class_confidence = {name: row["cutoff"] for name, row in json.loads(args.class_confidence.read_text(encoding="utf-8"))["classes"].items()}
+    else:
+        class_confidence = load_class_confidence(config.ONNX_MODEL_PATH) if args.model is None else {}
 
     if not args.video.is_file():
         parser.error(f"Video not found: {args.video}")
@@ -197,7 +203,7 @@ def main():
 
     model_path = config.ONNX_MODEL_PATH if args.model is None else args.model
 
-    tracker = OnnxTracker(OnnxDetector(session=session))
+    tracker = OnnxTracker(OnnxDetector(session=session, class_confidence=class_confidence))
 
     records, fps, frame_size = process_video(args.video, tracker, ZoneMonitor())
 
@@ -211,6 +217,7 @@ def main():
             "backend": "onnx",
             "intra_op_threads": args.threads,
             "confidence": config.DETECTION_CONFIDENCE,
+            "class_confidence": class_confidence,
             "nms_iou": config.NMS_IOU_THRESHOLD,
             "tracker": config.TRACKER_CONFIG,
             "fragment_frames": FRAGMENT_FRAMES,

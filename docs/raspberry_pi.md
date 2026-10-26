@@ -22,12 +22,12 @@ On 2026-10-22, `pip install --dry-run` against `requirements.txt` for Linux aarc
 
 | File | Needed for | SHA-256 |
 |---|---|---|
-| `models/selected.onnx` | Running the app (default ONNX backend) | `4df05391b598e7094c62dc0e92b440ceb1bace503ed997ae96ad521b9c94e5dc` |
-| `models/selected.pt` | `--backend pytorch`, `scripts/tune_onnx.py`, and benchmark scripts | `b4a4b6dedfe855ce252c8f9f2499996f5ca4b7d808f4fedbcea636740afedcb4` |
+| `models/selected.onnx` | Running the app (default ONNX backend) | `bb7018966e61caec79b69ca05fce146fd76fae05aedadfb00a3b5826c81da239` |
+| `models/selected.pt` | `--backend pytorch`, `scripts/tune_onnx.py`, and benchmark scripts | `04d2d6988d7b6f28d90f9a3a278c63c83c8053a3e9e0c482fe1dfd27cdd79be0` |
 
-These are the edgesight-ml-v2 release files (2026-10-24). The v1 release is kept in `models/archive/edgesight-ml-v1/`.
+These are the edgesight-ml-v2.1 release files (2026-10-26). Earlier releases are kept in `models/archive/`.
 
-The ONNX backend refuses to start if `models/selected.onnx` does not match the hash recorded in `models/runtime_config.json`.
+The ONNX backend refuses to start if `models/selected.onnx` does not match the hash recorded in `models/runtime_config.json`. Both backends also refuse to start if a model file does not match the hashes in `models/class_confidence.json` (the per-class cutoffs, which are tracked in git).
 
 Validation images (`datasets/rover_obstacles/images/val`) are also gitignored. They are only needed for the benchmark and tuning scripts, not for the live app.
 

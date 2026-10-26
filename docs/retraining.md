@@ -14,9 +14,11 @@ The rover only has to recognize an obstacle and move around it, so the classes s
 |---:|---|---|---|
 | 0 | rock | Rocks and stones of any shape: boulders, landscaping rocks, loose stones | Gravel and pebbles below the minimum size; curbs; concrete blocks |
 | 1 | cone | Traffic cones, and tall orange delineator posts (with or without a base) | Bollards, poles, and other orange objects that are not cones or delineator posts |
-| 2 | debris | Ground litter: sticks, twigs, and leaves. Label each stick or twig, and each distinct pile or cluster of leaves, as one box. | Isolated single leaves; ground fully covered in leaves (that is terrain); drainage grates; paper or plastic trash (not in scope for now) |
+| 2 | debris | Ground litter: sticks, twigs, and leaves. Label each stick or twig, each distinct pile or cluster of leaves, and each single leaf lying alone on a clear surface (pavement, sidewalk, short grass), as one box. | Single leaves within leaf-covered ground, and ground fully covered in leaves (that is terrain); leaves too small to make out; drainage grates; paper or plastic trash (not in scope for now) |
 
 Delineator posts were added to `cone` on 2026-10-24. They are bright orange, mark hazards the same way, and the rover must avoid them the same way; only the shape differs. The v1 training data contains traffic cones only.
+
+Isolated single leaves were added to `debris` on 2026-10-26. A leaf large enough to be detected on a clear surface is litter, and leaving it unlabeled teaches the model to call it background or another class, such as rock. Leaves inside leaf-covered ground stay terrain: a box on one of them would contradict its identical, unlabeled neighbors. Frames labeled before this date followed the old rule, so they may have isolated leaves without boxes, mainly in background clips.
 
 ## Labeling Rules
 
@@ -222,13 +224,15 @@ Candidate v2.1 showed that stock-photo validation chooses the wrong checkpoints.
 - `track_fence`: frames 1430–1960, traffic cones behind the running-track fence with one tipped over; 17 labeled frames and 20 cones
 - `crosswalk_tree`: frames 1960–2442, including the close-up
 
-`track_fence` is reserved as a possible test scene and excluded from cross-validation until the user decides.
+**`track_fence` is a test scene** (user decision, 2026-10-26).
+- The rover is unlikely to meet cones behind fences, so training on them serves no purpose, but they make a useful benchmark for distant and partly hidden cones.
+- It is scored as its own scene and does not count toward the cone target. It is not the only cone test: the cone target is still measured on `cones.mp4` and `testset_001`.
+- Its 17 frames are left out of every cross-validation fold (`reserved_groups` in `datasets/cv_plan.json`) and out of the final v2.1 training data (`exclude_ranges` in `datasets/rover_obstacles_v2_1b_plan.json`).
 
 **Debris label audit** (`datasets/rover_obstacles/raw/session_004/debris_review/`):
 - 36 small, square-ish debris boxes were flagged.
-- **#8–#36 (29 boxes, `mixed_2`) are isolated single leaves,** which break the labeling rules. They are removed through `remove_boxes` in `datasets/rover_obstacles_v2_1_plan.json` and `datasets/cv_plan.json`; the CVAT export itself is unchanged.
+- **#8–#36 (29 boxes, `mixed_2`) are single leaves inside leaf-covered ground,** which is terrain under the labeling rules. They are removed through `remove_boxes` in the v2.1 and cross-validation plans; the CVAT export itself is unchanged. The user confirmed the removal on 2026-10-26.
 - #1–#7 (`debris_2`, a curled piece of bark or stick) are kept.
-- Pending user confirmation.
 
 **Test-set labeling package** (`datasets/rover_obstacles/raw/testset_001/`):
 - 130 frames sampled every 15th frame from the four test clips.
@@ -276,15 +280,135 @@ Candidate v2.1 showed that stock-photo validation chooses the wrong checkpoints.
 **Morning checklist (user):**
 1. **Label the test frames.** Upload `testset_001/cvat_images.zip` to a new CVAT task (labels Rock, Cone, Debris) and label all 91 frames.
    - Pre-labels (`cvat_prelabels.zip`) speed this up but come from v2, the model being evaluated. Check every box, so its mistakes don't become "ground truth".
+   - Follow the 2026-10-26 debris rule: box single leaves lying alone on a clear surface, but not leaves within leaf-covered ground.
    - Export in either format into `testset_001/`.
-2. **Confirm the debris removals** on `debris_review/flagged_debris_page1.jpg`: #8–#36 removed, #1–#7 kept.
-3. **Decide the `track_fence` scene.** Move it to the test set, which adds traffic cones and the fence condition to testing, or keep it for training.
+2. ~~**Confirm the debris removals.**~~ Done 2026-10-26: #8–#36 removed, #1–#7 kept.
+3. ~~**Decide the `track_fence` scene.**~~ Done 2026-10-26: it is a test scene.
 
 **After that (Claude):**
 - Build the labeled test set.
-- Choose settings from cross-validation, and train the final v2.1 on all training data, with 2–3 seeds if the folds show high variance.
+- Choose settings from cross-validation, and train the final v2.1 on `datasets/rover_obstacles_v2_1b_plan.json` (all training data except `track_fence`), with 2–3 seeds if the folds show high variance.
 - Tune CAUTION persistence and per-class confidence cutoffs on the cross-validation predictions.
 - Score once on the labeled test set and the test clips, then decide on release.
+
+### Final v2.1: setup and scoring plan (fixed 2026-10-26, before any test scoring)
+
+**Labeled test sets** (`scripts/build_testset.py`, `datasets/testset_plan.json`; scoring only):
+- `test_clips`: the 130 `testset_001` frames. That is 91 frames labeled by the user (127 rock, 35 cone, and 131 debris boxes; 7 frames reviewed and left empty) plus 39 `empty.mp4` backgrounds.
+- `track_fence`: 17 frames with 20 traffic cones behind the fence, scored on its own.
+
+**Training data:** `datasets/rover_obstacles_v2_1b` has 262 training images (44 background) with 192 cone, 262 debris, and 169 rock boxes. That is the v2.1 data without `track_fence` and without the 29 leaf boxes. Validation is still the 21 stock photos (`docs/split_lock_v2_1b.json`).
+
+**Training:** `long_aug` settings (mosaic 1.0, scale 0.7, hsv_v 0.5, translate 0.15) for a fixed 40 epochs, with no early stopping (`scripts/train_model.py --config long_aug --fixed-epochs`).
+- 40 sits between the median (30) and the mean (41) of the cross-validation best epochs.
+- **The candidate is `last.pt` of seed 42** (`runs/train/pilot_v5_final`). Seed 7 (`pilot_v5_final_seed7`) is scored only to show run-to-run variance and will not be selected, whatever its score.
+
+**Per-class confidence cutoffs** (`scripts/tune_confidence.py`, `runs/cv/confidence_tuning_long_aug.json`):
+- Each class's F1-vs-confidence curve is averaged over the four `long_aug` cross-validation runs, each on its own held-out locations.
+
+| Class | Cutoff | F1 at cutoff | F1 at 0.40 | Runs |
+|---|---:|---:|---:|---:|
+| rock | 0.50 | 0.783 | 0.720 | 2 (rock is only in fold 2, 14 boxes) |
+| cone | 0.23 | 0.823 | 0.701 | 4 |
+| debris | 0.23 | 0.519 | 0.433 | 4 |
+
+- The app reads them from `models/class_confidence.json`, written at release (`scripts/tune_confidence.py --release`) together with the hashes of the released model files. v2 has no such file, so it keeps the single 0.40. Candidates run with `--model` never pick up the released cutoffs.
+- With ByteTrack's `new_track_thresh` of 0.25, cone and debris detections between 0.23 and 0.25 can extend a track but not start one.
+
+**CAUTION persistence: not added in this round.** It needs consecutive video frames, and the cross-validation data are frames 15 apart. Tuning it on the test clips would make them a selection set. If the empty clip misses its target, that is recorded as a miss.
+
+**Scoring, done once:**
+- Score v2 (as released, cutoff 0.40) and both v2.1 seeds (CV cutoffs) on `test_clips` and `track_fence` with `scripts/evaluate_model.py`: mAP, plus per-class precision and recall at the cutoffs.
+- Score them on the four test clips with `scripts/analyze_video.py` against the Success Criteria.
+
+**Release rule:** v2.1 replaces v2 only if all three hold:
+- it improves cone detection on `cones.mp4`;
+- it still meets every target v2 meets;
+- its `test_clips` mAP50-95 is not lower than v2's.
+
+### Final v2.1: results (seed 42, 2026-10-26)
+
+The candidate is `runs/train/pilot_v5_final/weights/last.pt`, with 40 epochs completed. It was scored once against the plan above with the cross-validation cutoffs (rock 0.50, cone 0.23, debris 0.23). v2 is shown as released, at 0.40.
+
+**Success criteria (test clips):**
+
+| Measure | Target | v2 (released) | v2.1 seed 42 | Met |
+|---|---|---:|---:|---|
+| Cones detected, cone clip | ≥ 70% | 45.9% | **81.0%** | Yes (first time) |
+| Debris detected, debris clip | ≥ 70% | 76.6% | **92.4%** | Yes |
+| Rocks detected, rock clip | ≥ 85% | 92.2% | 88.3% | Yes |
+| False CAUTION, empty clip | ≤ 5% | 1.4% | **0.0%** | Yes |
+| Stock-photo validation mAP50-95 (640) | ≥ 0.35 | 0.441 | 0.487 | Yes |
+
+Sources: `runs/video_analysis/b_*.json` (v2) and `d_*.json` (v2.1); `runs/evaluation/v21_stockval_640/summary.json`.
+
+**Labeled test frames** (`test_clips`, 130 frames; `track_fence`, 17 frames):
+
+| Measure | v2 | v2.1 seed 42 |
+|---|---:|---:|
+| `test_clips` mAP50 | 0.778 | 0.788 |
+| `test_clips` mAP50-95 | **0.617** | 0.541 |
+| Rock: precision / recall at cutoff | 0.96 / 0.58 | 0.98 / 0.47 |
+| Cone: precision / recall at cutoff | 0.85 / 0.33 | 0.98 / 0.97 |
+| Debris: precision / recall at cutoff | 0.76 / 0.36 | 0.60 / 0.51 |
+| `track_fence` mAP50-95 | 0.271 | **0.550** |
+| `track_fence` cone recall at cutoff | 0.00 | 0.60 |
+
+Sources: `runs/evaluation/{v2,v21}_test_{test_clips,track_fence}/summary.json`.
+
+**Release rule:**
+- Cone detection improved. **Met.**
+- Every target v2 meets is still met. **Met.**
+- `test_clips` mAP50-95 not lower than v2's. **Not met:** 0.541 vs 0.617.
+
+**Caveat on the third condition, found after scoring:**
+- The test labels started as v2's pre-labels. 170 of the 293 boxes (58%) were kept unchanged (IoU ≥ 0.95 with a v2 pre-label box): rock 67%, cone 54%, debris 50%. A further 3% were adjusted and 40% were drawn new.
+- v2 reproduces its own boxes almost exactly, so mAP50-95, which rewards tight overlap, is biased toward v2. mAP50 is much less sensitive to this, and there v2.1 is slightly ahead (0.788 vs 0.778).
+- The plan did not anticipate this bias, and it was found only after seeing the result. Changing the rule now would be a deviation from the plan and must be recorded as one.
+
+**Weaknesses:**
+- Rock recall on the labeled frames fell from 0.58 to 0.47, and rock-clip detection from 92.2% to 88.3%. The rock cutoff of 0.50 rests on only 14 cross-validation boxes.
+- Debris precision on the labeled frames fell from 0.76 to 0.60.
+- The cone and rock clips have more debris detections: 168 and 176 vs v2's 76 and 114. Some may be isolated single leaves, which count as debris since 2026-10-26; this was not checked frame by frame.
+
+**Seed 7** (`pilot_v5_final_seed7`, variance only; never a release candidate). Same data, settings, and cutoffs; only the seed differs:
+
+| Measure | Target | v2.1 seed 42 | v2.1 seed 7 |
+|---|---|---:|---:|
+| Cones detected | ≥ 70% | 81.0% | 84.5% |
+| Debris detected | ≥ 70% | 92.4% | 98.8% |
+| Rocks detected | ≥ 85% | 88.3% | **72.0%** (missed) |
+| False CAUTION, empty clip | ≤ 5% | 0.0% | **6.4%** (missed; false detections in 12.5% of frames) |
+| Stock-photo validation mAP50-95 | ≥ 0.35 | 0.487 | 0.451 |
+| `test_clips` mAP50 / mAP50-95 | | 0.788 / 0.541 | 0.746 / 0.509 |
+| `track_fence` mAP50-95 | | 0.550 | 0.543 |
+
+Sources: `runs/video_analysis/d7_*.json`; `runs/evaluation/v21s7_{test_test_clips,test_track_fence,stockval_640}/summary.json`.
+
+- **The recipe is not stable at this data size.** Cones and debris improve with both seeds, but rock detection and empty-scene false alarms depend heavily on the seed.
+- **Seed 42 meets every target; seed 7 would not.** Seed 42 was declared the candidate before scoring, so releasing it is not cherry-picking. Still, its rock and empty-scene margins should be read as one draw from a wide range, not as what the recipe reliably produces.
+
+**Decision (user, 2026-10-26): release v2.1 (seed 42) after seed 7 is scored, as a recorded deviation from the release rule.**
+- **What is waived:** the third condition, `test_clips` mAP50-95 not lower than v2's.
+- **Why it is set aside rather than met:** with 58% of the test boxes being v2's own pre-label boxes, mAP50-95 on these labels is biased toward v2 and does not fairly compare the two models.
+- **What still holds:** the other two conditions, and all five success criteria.
+- **How to fix this next time:** label future test sets without pre-labels from a candidate being compared, or pre-label them with a model that is not in the comparison.
+
+### Release: edgesight-ml-v2.1 (2026-10-26)
+
+Seed 42 was released after seed 7 was scored; seed 7's results are recorded above as the run-to-run variance.
+
+1. **Select and archive:** `scripts/select_model.py --release edgesight-ml-v2.1 --dataset datasets/rover_obstacles_v2_1b --lock docs/split_lock_v2_1b.json --archive`, with candidates v2 (`runs/evaluation/v2_on_v21bval`) and `pilot_v5_final` `last.pt` (`runs/evaluation/v21_stockval_640`). It chose `pilot_v5_final` on stock validation mAP50-95 (0.4867 vs 0.4411) and moved v2's release files to `models/archive/edgesight-ml-v2/`.
+2. **Export:** `scripts/export_onnx.py` exported `models/selected.onnx`. Its outputs are identical to the scored candidate (maximum absolute difference 0.0 on the 21 validation images).
+3. **Cutoffs:** `scripts/tune_confidence.py --release` wrote `models/class_confidence.json` (rock 0.502, cone 0.232, debris 0.231) with the hashes of both release files.
+4. **Re-tune:** `scripts/tune_onnx.py --tag v2_1` for every preset, runs 1–3, then `scripts/summarize_tuning.py --tag v2_1` (`runs/benchmarks/tuning_v2_1_*`).
+   - The all-core default had a 12.4 ms median.
+   - 4 threads had a 16.4 ms median and the lowest p95, 19.9 ms; the app keeps its 4-thread override.
+5. **Verify:**
+   - `scripts/analyze_video.py` on `cones.mp4`, with no `--model`, used the release files and their cutoffs. It reproduced the candidate exactly: 392 cone frames (81.0%) and the same zone events (`runs/video_analysis/release_v21_cones.json`).
+   - `main.py --headless --video clips/empty.mp4 --duration 5` ran at 37.2 FPS with 0 dropped frames.
+
+Details: `docs/model_card.md`.
 
 ### Release (2026-10-24)
 
@@ -299,10 +423,10 @@ Details and held-out test results are in `docs/model_card.md`.
 
 **v2.1 plan:**
 - cone footage across backgrounds, distances, and lighting, for traffic cones and posts;
-- background footage with drainage grates and scattered single leaves;
+- background footage with drainage grates (single leaves on clear ground became debris on 2026-10-26);
 - held-out real-world validation clips;
 - a traffic-cone test clip and a rock test clip from a new location;
-- a check of the debris labels for boxed single leaves.
+- a check of the debris labels for boxed single leaves (done 2026-10-25; see the debris label audit above).
 
 **Implication for candidate B (written after candidate A):** the labeled real frames (sticks on grass and dirt, leaf litter, delineator posts) supply the contrast A lacked, and they cut backgrounds to about 18% of training images. If B still under-detects debris, the next variant should use fewer background frames.
 
@@ -364,6 +488,8 @@ Write a plan that assigns **whole clips** to train or val, and save it as `datas
 
 - **Validation clips:** put at least one clip of each class, plus one empty-scene clip, in `val`. It should be a different location from the training clips of the same class where possible.
 - **v1's 21 stock validation photos** are not copied. They stay in `datasets/rover_obstacles` as the stock-photo check.
+- **Held-out scenes inside a training clip:** list their frame ranges under `"exclude_ranges"` in the session, for example `{"more_cones": [[1430, 1960]]}` (start inclusive, end exclusive, `null` for the end of the clip). Those frames are left out of every split.
+- **Test-set guard:** the build fails if any planned frame belongs to a test set in `datasets/testset_plan.json`, and cross-validation fails if such a frame is in a fold. So the old `rover_obstacles_v2_1_plan.json`, which predates the `track_fence` decision, can no longer be rebuilt as it is.
 
 ```bash
 python -m scripts.build_dataset --plan datasets/rover_obstacles_v2_plan.json --output datasets/rover_obstacles_v2 --lock docs/split_lock_v2.json
@@ -420,7 +546,13 @@ python -m scripts.select_model --release edgesight-ml-v2 --dataset datasets/rove
 python -m scripts.export_onnx
 python -m scripts.tune_onnx --preset default --run 1 --tag v2    # repeat for each preset and runs 1-3
 python -m scripts.summarize_tuning --tag v2
+python -m scripts.tune_confidence --release    # only if the release uses per-class cutoffs
 ```
+
+- **Per-class cutoffs:** `--release` writes `models/class_confidence.json` with the cutoffs from `runs/cv/confidence_tuning_long_aug.json` and the hashes of `models/selected.onnx` and `models/selected.pt`.
+  - The app uses the cutoffs only with those exact files and refuses to start if they don't match.
+  - Without the file, every class uses the single `DETECTION_CONFIDENCE`.
+  - `--archive` moves the file with the rest of the release, so rolling back never keeps the newer model's cutoffs.
 
 - **Archiving:** `--archive` moves the v1 release files to `models/archive/edgesight-ml-v1/` before installing the winner.
 - **v1 as a candidate:** it can be listed as `models/selected.pt`. If it wins, it is installed from the archive.

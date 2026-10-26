@@ -1,129 +1,26 @@
-
+"""Phase 5: the ONNX Runtime detector and ByteTrack tracker used by the app."""
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import Mock
 
 import numpy as np
 import pytest
 
-from edgesight.detector import (
-    ObjectDetector,
-    OnnxDetector,
-    create_session,
-    decode_output,
-    letterbox,
-    preprocess,
-    scale_boxes,
-)
+from edgesight.detector import OnnxDetector, create_session, decode_output, letterbox, preprocess, scale_boxes
+from edgesight.tracker import OnnxTracker
 
-
-# ObjectDetector (PyTorch)
-
-def make_box(confidence):
-    return SimpleNamespace(
-        xyxy=np.array([[10, 20, 100, 200]]),
-        conf=np.array([confidence]),
-        cls=np.array([0]),
-    )
-
-
-def make_detector(boxes):
-    fake_model = Mock()
-
-    fake_model.predict.return_value = [
-        SimpleNamespace(
-            boxes=boxes,
-            names={0: "person"},
-        )
-    ]
-
-    return ObjectDetector(
-        model=fake_model,
-        confidence=0.40,
-    )
-
-
-def test_detect_object():
-    detector = make_detector(
-        [make_box(0.90)]
-    )
-
-    frame = np.zeros(
-        (480, 640, 3),
-        dtype=np.uint8,
-    )
-
-    detections = detector.detect(frame)
-
-    assert len(detections) == 1
-    assert detections[0].label == "person"
-    assert detections[0].bbox == (10, 20, 100, 200)
-    assert abs(detections[0].confidence - 0.90) < 1e-6
-
-
-def test_low_confidence_filtered():
-    detector = make_detector(
-        [make_box(0.20)]
-    )
-
-    frame = np.zeros(
-        (480, 640, 3),
-        dtype=np.uint8,
-    )
-
-    detections = detector.detect(frame)
-
-    assert len(detections) == 0
-
-
-def test_no_detections():
-    detector = make_detector([])
-
-    frame = np.zeros(
-        (480, 640, 3),
-        dtype=np.uint8,
-    )
-
-    detections = detector.detect(frame)
-
-    assert detections == []
+from tests.helpers import FakeSession, make_output
 
 
 # OnnxDetector (ONNX Runtime)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
 ONNX_PATH = PROJECT_ROOT / "models" / "selected.onnx"
+
+
 VAL_IMAGES = PROJECT_ROOT / "datasets" / "rover_obstacles" / "images" / "val"
-
-
-def make_output(rows, classes=3, anchors=8400):
-    # rows are (cx, cy, w, h, class_id, score) in letterboxed pixels
-    output = np.zeros((1, 4 + classes, anchors), dtype=np.float32)
-
-    for index, (cx, cy, w, h, class_id, score) in enumerate(rows):
-        output[0, :4, index] = (cx, cy, w, h)
-        output[0, 4 + class_id, index] = score
-
-    return output
-
-
-class FakeSession:
-    def __init__(self, output, shape=(1, 3, 640, 640)):
-        self.output = output
-        self.shape = list(shape)
-        self.feeds = []
-
-    def get_inputs(self):
-        return [SimpleNamespace(name="images", shape=self.shape)]
-
-    def get_modelmeta(self):
-        return SimpleNamespace(custom_metadata_map={"names": "{0: 'rock', 1: 'cone', 2: 'debris'}"})
-
-    def run(self, output_names, feeds):
-        self.feeds.append(feeds)
-        return [self.output]
 
 
 def test_letterbox_pads_camera_frame():
@@ -274,10 +171,54 @@ def test_matches_ultralytics_onnx_predictions():
         assert np.allclose(scores[nearest], result.boxes.conf.numpy(), atol=1e-4), path.name
 
 
-def test_create_session_can_skip_hash_for_candidates(tmp_path):
-    config = tmp_path / "runtime_config.json"
-    config.write_text(json.dumps({"onnx_sha256": "0" * 64, "configuration": {}}), encoding="utf-8")
+# OnnxTracker (ByteTrack on ONNX detections)
 
-    # The hash check is skipped, so the failure comes later, from the missing settings
-    with pytest.raises(KeyError):
-        create_session(tmp_path / "candidate.onnx", config, verify_hash=False)
+class FakeOnnxDetector:
+    names = {0: "rock", 1: "cone", 2: "debris"}
+
+    def __init__(self, frames):
+        # Each item is a list of (x1, y1, x2, y2, score, class_id)
+        self.frames = list(frames)
+
+    def infer(self, frame):
+        rows = np.array(self.frames.pop(0), dtype=np.float32).reshape(-1, 6)
+
+        return rows[:, :4], rows[:, 4], rows[:, 5].astype(int)
+
+
+def run_onnx_tracker(frames):
+    tracker = OnnxTracker(FakeOnnxDetector(frames))
+
+    frame = np.zeros(
+        (480, 640, 3), dtype=np.uint8
+    )
+
+    return [tracker.track(frame) for _ in frames]
+
+
+def test_onnx_tracker_keeps_id_across_frames():
+    box = (100, 100, 200, 220, 0.90, 1)
+
+    results = run_onnx_tracker([[box], [box], [box]])
+
+    ids = [objects[0].track_id for objects in results]
+
+    assert all(len(objects) == 1 for objects in results)
+    assert ids[0] is not None
+    assert ids == [ids[0]] * 3
+    assert results[0][0].label == "cone"
+
+
+def test_onnx_tracker_hides_unconfirmed_track():
+    box = (100, 100, 200, 220, 0.90, 0)
+
+    results = run_onnx_tracker([[], [box], [box]])
+
+    assert results[0] == []
+    assert results[1] == []
+    assert len(results[2]) == 1
+    assert results[2][0].track_id is not None
+
+
+def test_onnx_tracker_empty_frames():
+    assert run_onnx_tracker([[], []]) == [[], []]
