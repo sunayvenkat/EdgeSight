@@ -1,6 +1,21 @@
 # EdgeSight
 Real-time edge AI vision system for object detection, tracking, and embedded inference optimization
 
+![EdgeSight tracking orange delineator posts behind a fence: boxes with track IDs, the yellow monitoring zone, and live FPS, latency, and CAUTION status](docs/assets/demo_desktop.webp)
+
+*edgesight-ml-v2.1 on a held-out test clip, recorded on the desktop with `--record`. Its cone footage was never used for training. The Raspberry Pi demo will replace this recording.*
+
+## At a Glance
+
+| | Result | Source |
+|---|---|---|
+| Held-out test clips | Every success criterion met: cones 81.0%, debris 92.4%, rocks 88.3%, no false CAUTION on an obstacle-free scene | [model_card.md](docs/model_card.md) |
+| From stock photos to real footage | False CAUTION on an empty sidewalk fell from 46.4% (v1) to 0.0% (v2.1) | [video_evaluation.md](docs/video_evaluation.md) |
+| CPU inference | 15.8 ms median model run with 4 threads (desktop, v2.1). The ONNX export matched PyTorch on 66 of 66 detections (v1). | [quantization.md](docs/quantization.md), [onnx_results.md](docs/onnx_results.md) |
+| INT8 quantization | 27% faster, −3.2% mAP50-95, and still meets every test-clip target (`u8_no_head`) | [quantization.md](docs/quantization.md) |
+| Live app | 30 FPS from a 640 × 480 webcam (camera-limited); target ≥ 10 FPS | [raspberry_pi.md](docs/raspberry_pi.md) |
+| Raspberry Pi 5 | Not yet measured; target ≥ 3 FPS | [raspberry_pi.md](docs/raspberry_pi.md) |
+
 ## Overview
 
 EdgeSight reads frames from a camera or a recorded video, detects rover obstacles (rock, cone, debris) with a fine-tuned YOLO26n model, tracks them across frames with ByteTrack, and raises a CAUTION/CLEAR warning when a tracked object enters a monitoring zone in the lower part of the image. It runs entirely on the CPU and is being prepared for a Raspberry Pi 5.
@@ -10,12 +25,25 @@ EdgeSight reads frames from a camera or a recorded video, detects rover obstacle
 - **Monitoring zone:** a configurable normalized rectangle (`ZONE_*` in `edgesight/config.py`). Objects whose bottom-center point is inside the zone produce ENTER/EXIT events and a CAUTION status. The zone is an image-space warning, not a distance estimate.
 - **Input:** live cameras are read on a background thread that keeps only the newest frame, so a slow frame never builds a backlog. Video files are processed frame by frame, in order, with no frames dropped.
 
+```mermaid
+flowchart LR
+    A["Camera or video file<br/>sources.py"] --> B["Detector<br/>detector.py<br/>ONNX Runtime or PyTorch,<br/>per-class cutoffs"]
+    B --> C["ByteTrack<br/>tracker.py"]
+    C --> D["Monitoring zone<br/>events.py<br/>CAUTION / CLEAR"]
+    D --> E["Overlay and summary<br/>main.py"]
+    E --> F["Window"]
+    E --> G["Annotated video<br/>recorder.py"]
+    M["models/selected.onnx<br/>runtime_config.json<br/>class_confidence.json"] -.-> B
+```
+
+The model files are loaded only if they match the hashes recorded at release. The offline side covers frame extraction, labeling, dataset builds, training, evaluation, export, tuning and quantization; it lives in `scripts/` and is described in [retraining.md](docs/retraining.md).
+
 The project goals and success criteria are in [docs/mission.md](docs/mission.md).
 
 ## Requirements
 
 - **Desktop:** tested with Python 3.14 on Windows 11, CPU only. All dependencies are pinned in `requirements.txt`.
-- **Raspberry Pi 5:** Raspberry Pi OS (64-bit) "Trixie" with Python 3.13. "Bookworm" (Python 3.11) cannot install the pinned `numpy`. See [docs/raspberry_pi.md](docs/raspberry_pi.md) for the Pi setup, which has not yet been run on hardware.
+- **Raspberry Pi 5:** Raspberry Pi OS (64-bit) "Trixie" with Python 3.13. "Bookworm" (Python 3.11) cannot install the pinned `numpy`. Every pinned package resolves to a prebuilt Linux ARM64 wheel for Python 3.13 (checked with `pip install --dry-run`, 2026-10-26). See [docs/raspberry_pi.md](docs/raspberry_pi.md) for the Pi setup, which has not yet been run on hardware.
 - A webcam that OpenCV can open, or a video file. Neither is needed to run the tests.
 - The model files described under [Model Files](#model-files), which are not in git.
 
@@ -53,13 +81,15 @@ Then copy in the model files below.
 |---|---|
 | `models/selected.onnx` | Running the app with the default ONNX backend |
 | `models/selected.pt` | `--backend pytorch`, ONNX re-export and tuning, and the benchmark scripts |
+| `models/selected_int8_*.onnx` (optional) | INT8 candidates for the Raspberry Pi comparison ([quantization.md](docs/quantization.md)) |
 
 Their expected SHA-256 hashes are committed alongside them:
 
 - `models/onnx_manifest.json`: `onnx_sha256` for `selected.onnx` and `source_sha256` for `selected.pt`
 - `models/selection.json`: `checkpoint_sha256` for `selected.pt`, plus the released model's validation metrics
+- `models/class_confidence.json`: the per-class confidence cutoffs, with the hashes of the files they apply to, including the INT8 models
 
-Check a copied file with `sha256sum models/selected.onnx` (Linux) or `Get-FileHash models\selected.onnx` (PowerShell).
+To check everything at once, run `python -m scripts.check_setup` (add `--camera 0` to test a camera). It checks the packages, the model files against their recorded hashes, and that the ONNX session loads and detects. To check a single file, use `sha256sum models/selected.onnx` (Linux) or `Get-FileHash models\selected.onnx` (PowerShell).
 
 The ONNX backend also checks `models/selected.onnx` against the hash in `models/runtime_config.json`, which holds the tuned ONNX Runtime settings, and refuses to start if they do not match. After re-exporting the model, re-run `scripts/tune_onnx.py` so the runtime config matches the new file.
 
@@ -74,7 +104,7 @@ python main.py [--backend onnx|pytorch] [--model PATH] [--camera N | --video PAT
 | Option | Default | Description |
 |---|---|---|
 | `--backend onnx\|pytorch` | `onnx` | Inference backend. `onnx` uses `models/selected.onnx` with the tuned ONNX Runtime session; `pytorch` uses `models/selected.pt` through Ultralytics. |
-| `--model PATH` | released model | Run a candidate model instead: a `.onnx` file for `onnx` or a `.pt` file for `pytorch`. Candidates reuse the tuned runtime settings without the release hash check. |
+| `--model PATH` | released model | Run a candidate model instead: a `.onnx` file for `onnx` or a `.pt` file for `pytorch`. Candidates reuse the tuned runtime settings without the release hash check. INT8 models built from the release get its per-class cutoffs; other candidates use the single cutoff. |
 | `--camera N` | `0` | OpenCV camera index. Cannot be combined with `--video`. |
 | `--video PATH` | none | Process a recorded video file instead of a camera. Cannot be combined with `--camera`. |
 | `--threads N` | `4` | ONNX Runtime intra-op threads (`ONNX_INTRA_OP_THREADS` in `edgesight/config.py`). `0` lets ONNX Runtime use all cores. |
@@ -111,7 +141,7 @@ python main.py --headless --duration 60 --record demo.mp4
 
 On Linux, `main.py` switches to headless mode automatically when no X11 or Wayland display is available, for example over SSH.
 
-The window shows tracked boxes, the monitoring zone, processed FPS, inference time, object count, CAUTION/CLEAR status, and dropped frames. Zone ENTER/EXIT events are printed as they happen. Each run ends with a summary of processed frames and FPS, median and p95 inference-plus-tracking time, and captured and dropped frames.
+The window shows tracked boxes, the monitoring zone, processed FPS, inference time, object count, CAUTION/CLEAR status, and dropped frames. The text sits on dark, semi-transparent backdrops so it stays readable on bright scenes, and it scales up on video wider than 640 pixels. Zone ENTER/EXIT events are printed as they happen. Each run ends with a summary of processed frames and FPS, median and p95 inference-plus-tracking time, and captured and dropped frames.
 
 Camera resolution, inference size, confidence and NMS thresholds, the tracker config, and the monitoring zone are set in `edgesight/config.py`.
 
@@ -144,8 +174,8 @@ edgesight/                (modules in pipeline order)
   tracker.py             ByteTrack tracking for both backends, and box drawing
   events.py              Monitoring zone and ENTER/EXIT events
   recorder.py            Saving annotated video (--record)
-scripts/                 Dataset checks, training, evaluation, model selection, ONNX export and tuning, quantization, benchmarks, profiling
-tests/                   pytest suite, one folder per project phase (phase1_foundation ... phase6_desktop_completion)
+scripts/                 Dataset checks, training, evaluation, model selection, ONNX export and tuning, quantization, benchmarks, profiling, and the setup check (check_setup.py)
+tests/                   pytest suite, one folder per project phase (phase1_foundation ... phase9_v1_release)
 cpp/main.cpp             Native C++ ONNX Runtime inference (built with CMakeLists.txt; Windows x64 only for now)
 models/                  Model metadata (*.json); model files are copied in, not committed
 datasets/rover_obstacles/  Dataset config; images and labels are not committed
@@ -166,7 +196,7 @@ docs/                    Project documentation and results
 | [inference_optimization.md](docs/inference_optimization.md) | Inference size 416 vs 512 vs 640: accuracy and camera-pipeline performance |
 | [quantization.md](docs/quantization.md) | INT8 quantization variants: accuracy, detection consistency, and latency against FP32 |
 | [video_evaluation.md](docs/video_evaluation.md) | Detection, tracking, and false alarms on real recorded video (`scripts/analyze_video.py`) |
-| [retraining.md](docs/retraining.md) | Retraining on real footage: class definitions, labeling rules, v2 success criteria, and the step-by-step workflow |
+| [retraining.md](docs/retraining.md) | Retraining on real footage: class definitions, labeling rules, success criteria, cross-validation, the v2 and v2.1 results, and the step-by-step workflow |
 | [raspberry_pi.md](docs/raspberry_pi.md) | Raspberry Pi 5 setup, desktop reference numbers, and the Pi measurement plan |
 
 `docs/split_lock.json` records the locked train/validation/test split.
@@ -187,6 +217,7 @@ All figures are from the docs linked above; see them for methodology and limitat
 - **What background frames alone do** ([retraining.md](docs/retraining.md)): an ablation trained with background frames but no new labels removed every false alarm but also stopped detecting debris (47.9% to 0%). Labeled real-world positives were needed as well.
 - **More data helped** ([experiments.md](docs/experiments.md)): growing the training set from 21 to 51 images raised validation mAP50 from 0.4667 to 0.6261 and recall from 0.4342 to 0.5822. Debris remains the weakest class (mAP50 0.274).
 - **ONNX matches PyTorch exactly** ([onnx_results.md](docs/onnx_results.md)): all 66 of 66 detections on the validation images matched, with mean box IoU 1.000.
+- **INT8 quantization** ([quantization.md](docs/quantization.md)): `u8_no_head`, quantized from v2.1, was 27% faster than FP32 in direct-session timing on the desktop (11.5 vs 15.8 ms median) and lost 3.2% mAP50-95. On the test clips it still met every target (cones 80.6%, debris 85.8%, rocks 88.5%, no false CAUTION). Fully quantizing the model detects nothing, because its output mixes pixel coordinates and scores under one scale.
 - **Tuned inference** ([onnx_results.md](docs/onnx_results.md)): the tuned ONNX Runtime session reached an 11.2 ms median in direct-session timing, and native C++ inference reached 13.8–26.6 ms medians with outputs identical to the Python reference.
 - **Live app on the desktop** ([raspberry_pi.md](docs/raspberry_pi.md)): with a 640 × 480 webcam at 30 FPS, the default ONNX backend with 4 threads processed 30.0 FPS (camera-limited) at a 20.4 ms median and 21.9 ms p95, using 358% process CPU versus 1,283% for the all-core preset. The mission target is at least 10 FPS on the development computer.
 - **Raspberry Pi 5:** not yet measured. The target is at least 3 FPS ([mission.md](docs/mission.md)).

@@ -14,7 +14,7 @@ Preparation only. Nothing in this document has been run on a Raspberry Pi yet. T
 
 Raspberry Pi OS "Bookworm" (Python 3.11) is not supported by the current pins: `numpy==2.5.3` has no Python 3.11 wheel for 64-bit ARM.
 
-On 2026-10-22, `pip install --dry-run` against `requirements.txt` for Linux aarch64 / CPython 3.13 resolved all 52 pinned packages from prebuilt wheels, with no additional dependencies. The same `requirements.txt` is used on the desktop and the Pi.
+On 2026-10-22, `pip install --dry-run` against `requirements.txt` for Linux aarch64 / CPython 3.13 resolved all 52 pinned packages from prebuilt wheels, with no additional dependencies. A re-check on 2026-10-26, against manylinux 2.17–2.39 aarch64, gave the same result: `torch-2.14.1`, `onnxruntime-1.31.0`, and `numpy-2.5.3` resolve to `cp313` `manylinux_2_28_aarch64` wheels, and `opencv-python-5.0.0.93` to an `abi3` aarch64 wheel. The same `requirements.txt` is used on the desktop and the Pi.
 
 ## Files Not in Git
 
@@ -53,12 +53,24 @@ From the development machine, copy the model files (replace the user and host na
 scp models/selected.onnx models/selected.pt pi@edgesight.local:~/EdgeSight/models/
 ```
 
+For the INT8 comparison (step 5 of the measurement plan), also copy `models/selected_int8_u8_no_head.onnx` and `models/selected_int8_s8_no_head.onnx`.
+
 Then verify the install on the Pi:
 
 ```bash
-sha256sum models/selected.onnx models/selected.pt
+python -m scripts.check_setup --camera 0
 python -m pytest -q
 ```
+
+`check_setup` prints PASS, FAIL, or SKIP for each check:
+- the packages and their versions;
+- the release files against the hashes in `models/runtime_config.json` and `models/selection.json`;
+- the per-class cutoffs;
+- any copied INT8 models against `models/class_confidence.json`;
+- one ONNX inference with the app's settings;
+- with `--camera`, one frame from the camera.
+
+It exits with an error if anything required fails. On the desktop (2026-10-26) every check passed, and one 640 × 480 frame took 24 ms.
 
 ## Running
 

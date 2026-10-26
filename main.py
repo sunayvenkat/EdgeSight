@@ -14,7 +14,7 @@ from edgesight import config
 from edgesight.events import ZoneMonitor
 from edgesight.recorder import CODECS, RecordingError, VideoRecorder, codec_for
 from edgesight.sources import AsyncCamera, VideoFileSource
-from edgesight.tracker import draw_tracks
+from edgesight.tracker import darken, draw_tracks, text_scale
 
 
 def parse_args(argv=None):
@@ -114,7 +114,14 @@ def draw_overlay(frame, objects, zone, status, metrics):
 
     left, top, right, bottom = zone.bounds(frame.shape)
 
-    cv2.rectangle(annotated, (left, top), (right, bottom), (0, 255, 255), 2)
+    scale = text_scale(frame)
+    thickness = round(2 * scale)
+
+    cv2.rectangle(annotated, (left, top), (right, bottom), (0, 255, 255), thickness)
+
+    if metrics:
+        width = max(cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7 * scale, thickness)[0][0] for text in metrics)
+        darken(annotated, round(5 * scale), round(5 * scale), round(25 * scale) + width, round((15 + len(metrics) * 30) * scale))
 
     for i, text in enumerate(metrics):
         color = (255, 255, 255)
@@ -122,7 +129,7 @@ def draw_overlay(frame, objects, zone, status, metrics):
         if i == 3:
             color = ((0, 255, 255) if status == "CAUTION" else (0, 255, 0))
 
-        cv2.putText(annotated, text, (15, 30 + i * 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        cv2.putText(annotated, text, (round(15 * scale), round((30 + i * 30) * scale)), cv2.FONT_HERSHEY_SIMPLEX, 0.7 * scale, color, thickness)
 
     return annotated
 

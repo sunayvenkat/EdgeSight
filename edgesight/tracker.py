@@ -93,23 +93,40 @@ class OnnxTracker:
     def _make_object(self, track_id, bbox, confidence, class_id):
         return TrackedObject(track_id=track_id, label=self.detector.names[int(class_id)], confidence=float(confidence), bbox=tuple(int(value) for value in bbox))
 
+def text_scale(frame):
+    # Overlay sizes are tuned for 640-wide camera frames; grow them on larger video so text stays legible
+    return max(1.0, frame.shape[1] / 640)
+
+
+def darken(image, x0, y0, x1, y1, keep=0.35):
+    # Semi-transparent dark backdrop, so overlay text stays readable on bright scenes
+    height, width = image.shape[:2]
+    region = image[max(0, y0):min(height, y1), max(0, x0):min(width, x1)]
+    region[:] = (region * keep).astype(np.uint8)
+
+
 def draw_tracks(frame, objects):
     # Draw tracked objects and their IDs
 
     annotated = frame.copy()
+    scale = text_scale(frame)
+    thickness = round(2 * scale)
 
     for obj in objects:
         x1, y1, x2, y2 = obj.bbox
 
         color = (0, 255, 0)
 
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, thickness)
 
         identifier = (str(obj.track_id) if obj.track_id is not None else "?")
 
         text = (f"ID {identifier} | " f"{obj.label} {obj.confidence:.2f}")
+        origin = (x1, max(round(20 * scale), y1 - round(10 * scale)))
+        (width, height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.55 * scale, thickness)
 
-        cv2.putText(annotated, text, (x1, max(20, y1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
+        darken(annotated, origin[0] - 3, origin[1] - height - 3, origin[0] + width + 3, origin[1] + baseline)
+        cv2.putText(annotated, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.55 * scale, color, thickness)
 
     return annotated
 
