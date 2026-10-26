@@ -165,28 +165,35 @@ def background_fp_rate(model, images):
     return round(flagged / len(images), 4)
 
 
-def run_one(config_name, config, fold, data_yaml, val_entries):
+def run_label(config_name, seed):
+    """Results folder name: the config, plus the seed when it is not the default 42."""
+    return config_name if seed == COMMON["seed"] else f"{config_name}_seed{seed}"
+
+
+def run_one(config_name, config, fold, data_yaml, val_entries, seed=COMMON["seed"]):
     from ultralytics import YOLO
 
-    run_dir = CV_ROOT / config_name / fold["name"]
+    label = run_label(config_name, seed)
+    run_dir = CV_ROOT / label / fold["name"]
     result_path = run_dir / "cv_result.json"
 
     if result_path.is_file():
-        print(f"[skip] {config_name}/{fold['name']} already done")
+        print(f"[skip] {label}/{fold['name']} already done")
         return json.loads(result_path.read_text(encoding="utf-8"))
 
     if run_dir.exists():
         shutil.rmtree(run_dir)
 
+    settings = {**COMMON, "seed": seed, **config["train"]}
     start = time.time()
 
-    YOLO(str(PROJECT_ROOT / "yolo26n.pt")).train(data=str(data_yaml), project=str(CV_ROOT / config_name), name=fold["name"], exist_ok=False, plots=False, save=True, **COMMON, **config["train"])
+    YOLO(str(PROJECT_ROOT / "yolo26n.pt")).train(data=str(data_yaml), project=str(CV_ROOT / label), name=fold["name"], exist_ok=False, plots=False, save=True, **settings)
 
     train_seconds = round(time.time() - start)
     epoch, epochs_run = best_epoch(run_dir / "results.csv")
     backgrounds = [entry["path"] for entry in val_entries if not entry["label"].strip()]
 
-    result = {"config": config_name, "fold": fold["name"], "settings": {**COMMON, **config["train"], "stock": config["stock"]}, "best_epoch": epoch, "epochs_run": epochs_run, "train_seconds": train_seconds, "val_images": len(val_entries), "val_backgrounds": len(backgrounds)}
+    result = {"config": label, "base_config": config_name, "seed": seed, "fold": fold["name"], "settings": {**settings, "stock": config["stock"]}, "best_epoch": epoch, "epochs_run": epochs_run, "train_seconds": train_seconds, "val_images": len(val_entries), "val_backgrounds": len(backgrounds)}
 
     for which in ("best", "last"):
         weights = run_dir / "weights" / f"{which}.pt"
@@ -202,10 +209,11 @@ def run_one(config_name, config, fold, data_yaml, val_entries):
 
 
 def summarize(results):
-    """Average each config's validation metrics over its completed folds."""
+    """Average each config's (and seed variant's) validation metrics over its completed folds."""
     summary = {}
+    labels = list(dict.fromkeys(result.get("config") for result in results if result.get("config")))
 
-    for config_name in CONFIGS:
+    for config_name in labels:
         runs = [result for result in results if result.get("config") == config_name and "best" in result]
 
         if not runs:
@@ -234,6 +242,12 @@ def summarize(results):
 
 
 def write_summary(results):
+    # Combine every completed run on disk (all seeds and invocations) with this invocation's errors
+    completed = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(CV_ROOT.glob("*/*/cv_result.json"))]
+    order = {name: index for index, name in enumerate(CONFIGS)}
+    completed.sort(key=lambda result: (order.get(result.get("base_config", result["config"]), 99), result.get("seed", COMMON["seed"]), result["fold"]))
+    results = completed + [result for result in results if "error" in result]
+
     summary = summarize(results)
     (CV_ROOT / "summary.json").write_text(json.dumps({"summary": summary, "runs": results}, indent=2, default=str), encoding="utf-8")
 
@@ -254,6 +268,7 @@ def main():
     parser.add_argument("--plan", type=Path, default=DEFAULT_PLAN)
     parser.add_argument("--configs", nargs="+", choices=list(CONFIGS), default=list(CONFIGS))
     parser.add_argument("--stage-dir", type=Path, default=Path(os.environ.get("TEMP", "/tmp")) / "edgesight_cv", help="Where fold datasets are built (outside OneDrive)")
+    parser.add_argument("--seed", type=int, default=COMMON["seed"], help="Training seed; non-default seeds get their own results folders (e.g. long_seed7)")
 
     args = parser.parse_args()
 
@@ -291,8 +306,8 @@ def main():
                 if key not in datasets:
                     datasets[key] = build_fold_dataset(args.stage_dir / f"{fold_name}_{'stock' if config['stock'] else 'nostock'}", train, val, stock_root if config["stock"] else None)
 
-                print(f"\n=== {config_name} / {fold_name} ===", flush=True)
-                result = run_one(config_name, config, fold, datasets[key], val)
+                print(f"\n=== {run_label(config_name, args.seed)} / {fold_name} ===", flush=True)
+                result = run_one(config_name, config, fold, datasets[key], val, seed=args.seed)
                 print(f"best epoch {result['best_epoch']} of {result['epochs_run']}, val mAP50-95 {result['best']['mAP50_95']}, background FP {result['best']['background_fp_rate']}", flush=True)
             except Exception as error:
                 traceback.print_exc()

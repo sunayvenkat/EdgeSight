@@ -69,3 +69,21 @@ def test_remove_label_lines():
 
     with pytest.raises(ValueError, match="no labels"):
         build_dataset.remove_label_lines(labels, {"b": [1]})
+
+
+def test_run_label_marks_non_default_seeds():
+    from scripts.cross_validate import run_label
+
+    assert run_label("long", 42) == "long"
+    assert run_label("long", 7) == "long_seed7"
+
+
+def test_summarize_keeps_seed_variants_separate():
+    def run(label, fold, value):
+        report = {"mAP50_95": value, "mAP50": value, "recall": 0.5, "background_fp_rate": 0.0, "per_class": []}
+        return {"config": label, "fold": fold, "best": report, "last": report, "best_epoch": 30, "epochs_run": 60, "train_seconds": 60}
+
+    summary = summarize([run("long", "fold1", 0.4), run("long_seed7", "fold1", 0.6)])
+
+    assert summary["long"]["mAP50_95"] == 0.4
+    assert summary["long_seed7"]["mAP50_95"] == 0.6

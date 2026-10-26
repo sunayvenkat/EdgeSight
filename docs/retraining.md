@@ -245,6 +245,34 @@ Candidate v2.1 showed that stock-photo validation chooses the wrong checkpoints.
 - **Scoring:** each run is scored on its fold's held-out real frames (mAP, per-class mAP50, and the background false-positive rate at confidence 0.40).
 - **Results:** `runs/cv/summary.md` and `runs/cv/summary.json`.
 
+**Cross-validation results (seed 42, completed overnight).** Mean over two folds, each scored on held-out real-world locations (`runs/cv/summary.md`, `runs/cv/*/fold*/cv_result.json`):
+
+| Setting | mAP50-95 | mAP50 | Recall | Rock mAP50 | Cone mAP50 | Debris mAP50 | Background FP | Best epochs |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| baseline | 0.331 | 0.593 | 0.527 | 0.591 | 0.795 | 0.415 | 0.0% | 11, 22 (of 21, 32) |
+| long | 0.425 | 0.693 | 0.587 | 0.806 | 0.855 | 0.468 | 2.1% | 40, 64 (of 70, 94) |
+| long_aug | 0.462 | 0.743 | 0.663 | 0.734 | 0.885 | 0.578 | 8.3% | 35, 25 (of 65, 55) |
+| long_nostock | 0.145 | 0.339 | 0.339 | 0.0 | 0.612 | 0.226 | 0.0% | 18, 25 (of 48, 55) |
+
+- **The baseline stops too early.** More epochs and patience raised mAP50-95 from 0.331 to 0.425, and the best epochs moved from 11–22 to 40–64.
+- **The stock photos are needed.** Without them mAP50-95 fell to 0.145, and rock mAP50 to 0, because nearly all rock examples are stock photos.
+- **Augmentation gave the highest score, with caveats.** It was best overall and on debris (+0.11 debris mAP50 over `long`), but flagged more background frames (8.3% vs 2.1%). Its gain came from fold 1 (0.489 vs 0.407), while fold 2 was flat (0.435 vs 0.443).
+- **Rock is scored only in fold 2,** on 14 boxes, so rock comparisons are noisy.
+**Second seed (seed 7) for `long` and `long_aug`.** Over 4 runs each (2 folds × 2 seeds):
+
+| Setting | mAP50-95, mean ± sd | Debris mAP50 | Background FP | Best epochs |
+|---|---:|---:|---:|---|
+| long | 0.433 ± 0.020 | 0.458 | 4.6% | 40, 50, 61, 64 |
+| long_aug | 0.470 ± 0.044 | 0.533 | 9.8% | 22, 25, 35, 82 |
+
+- **Augmentation's gain is consistent but scene-dependent.** Paired by fold and seed, it scored +0.082 and +0.070 on fold 1 and −0.008 and +0.002 on fold 2. It helps on scenes like fold 1's and is neutral elsewhere.
+- **It roughly doubles the background false-positive rate,** about 1 more of each fold's ~22 background frames flagged at confidence 0.40.
+- **Best epochs vary widely,** especially with augmentation (22–82).
+
+**Recommendation:** train the final v2.1 with the `long_aug` settings and keep the stock photos.
+- **Epochs:** after the data split is final, use a fixed count near the cross-validation best epochs (about 40–45, without early stopping on stock photos), because stock validation chooses checkpoints poorly.
+- **False positives:** counter the higher background rate with the planned CAUTION persistence and per-class confidence tuning.
+
 **Morning checklist (user):**
 1. **Label the test frames.** Upload `testset_001/cvat_images.zip` to a new CVAT task (labels Rock, Cone, Debris) and label all 91 frames.
    - Pre-labels (`cvat_prelabels.zip`) speed this up but come from v2, the model being evaluated. Check every box, so its mistakes don't become "ground truth".
