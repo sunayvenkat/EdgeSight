@@ -28,22 +28,33 @@ def build_testset(testset, background_patterns):
     # plan_frames only accepts train and val, so plan as "val" and write everything to test
     entries, _ = plan_frames(manifest, {clip: "val" for clip in testset["clips"]}, background_patterns, labels, set(testset.get("empty_frames", [])), testset.get("exclude_ranges"))
 
-    for split in SPLITS:
-        (output / "images" / split).mkdir(parents=True)
-        (output / "labels" / split).mkdir(parents=True)
+    # Build in a staging folder and move it into place only after every check passes
+    staging = output.parent / f".{output.name}.building"
 
-    for entry in entries:
-        shutil.copy2(session_dir / entry["file"], output / "images" / "test" / entry["file"])
-        (output / "labels" / "test" / f"{Path(entry['file']).stem}.txt").write_text(entry["label"], encoding="utf-8")
+    if staging.exists():
+        shutil.rmtree(staging)
 
-    data_yaml = {"train": "images/train", "val": "images/val", "test": "images/test", "nc": len(CLASS_NAMES), "names": CLASS_NAMES}
-    (output / "data.yaml").write_text(yaml.safe_dump(data_yaml, sort_keys=False), encoding="utf-8")
+    try:
+        for split in SPLITS:
+            (staging / "images" / split).mkdir(parents=True)
+            (staging / "labels" / split).mkdir(parents=True)
 
-    errors, _ = validate_dataset(output)
+        for entry in entries:
+            shutil.copy2(session_dir / entry["file"], staging / "images" / "test" / entry["file"])
+            (staging / "labels" / "test" / f"{Path(entry['file']).stem}.txt").write_text(entry["label"], encoding="utf-8")
 
-    if errors:
-        shutil.rmtree(output)
-        raise SystemExit(f"{testset['name']} failed validation:\n" + "\n".join(errors))
+        data_yaml = {"train": "images/train", "val": "images/val", "test": "images/test", "nc": len(CLASS_NAMES), "names": CLASS_NAMES}
+        (staging / "data.yaml").write_text(yaml.safe_dump(data_yaml, sort_keys=False), encoding="utf-8")
+
+        errors, _ = validate_dataset(staging)
+
+        if errors:
+            raise SystemExit(f"{testset['name']} failed validation:\n" + "\n".join(errors))
+
+        staging.rename(output)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
 
     return output
 

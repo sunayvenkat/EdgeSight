@@ -21,7 +21,7 @@ MODELS_ROOT = PROJECT_ROOT / "models"
 LOCK_PATH = PROJECT_ROOT / "docs" / "split_lock.json"
 
 # Files that make up a release; --archive moves them to models/archive/<release>/
-RELEASE_FILES = ("selected.pt", "selected.onnx", "selection.json", "onnx_manifest.json", "runtime_config.json", "class_confidence.json")
+RELEASE_FILES = ("selected.pt", "selected.onnx", "selection.json", "onnx_manifest.json", "runtime_config.json", "class_confidence.json", "quantization_manifest.json")
 
 
 def sha256_file(path):
@@ -108,7 +108,10 @@ def archive_release(models_root=MODELS_ROOT):
 
     moved = []
 
-    for name in RELEASE_FILES:
+    # INT8 models are quantized from this release's ONNX file, so they leave with it
+    int8 = sorted(path.name for path in models_root.glob("selected_int8_*.onnx"))
+
+    for name in [*RELEASE_FILES, *int8]:
         if (models_root / name).exists():
             shutil.move(str(models_root / name), str(archive_dir / name))
             moved.append(name)

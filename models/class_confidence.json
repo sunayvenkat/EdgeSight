@@ -6,5 +6,11 @@
     "rock": 0.502,
     "cone": 0.232,
     "debris": 0.231
+  },
+  "derived_sha256": {
+    "selected_int8_u8_no_decode": "d8e557eb9ce3cd5018bbc0c304824f614fb820349fd8cf2efeba2ecb4c199742",
+    "selected_int8_u8_no_head": "5b3c19e4476ed4774e68e32488f1c8a8ca18380bc639f0fea269efba8273b449",
+    "selected_int8_s8_no_decode": "c810ccf3c2fd06724d6e5ce161c4b76dec7cffc79f428e88a1294f3208de95bd",
+    "selected_int8_s8_no_head": "e5618c06fb08466509e79103cfd77e0f5c69c794fbcd90739488c7bef90f781e"
   }
 }

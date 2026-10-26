@@ -10,11 +10,12 @@ import pytest
 
 import main
 import scripts.build_dataset as build_dataset
-from edgesight.detector import load_class_confidence, ObjectDetector, OnnxDetector, create_session
+from edgesight.detector import load_class_confidence, ObjectDetector, OnnxDetector, create_session, sha256_file
 from scripts.analyze_video import FRAGMENT_FRAMES, summarize_classes, summarize_expected, summarize_tracks, summarize_zone
 from scripts.build_dataset import held_out_frames
 from scripts.cross_validate import group_for, split_fold, summarize
 from scripts.evaluate_model import operating_point
+from scripts.quantize_onnx import register_derived
 from scripts.tune_confidence import best_cutoffs, write_release
 
 from tests.helpers import FakeSession, make_box, make_output
@@ -138,9 +139,10 @@ def test_candidate_model_skips_release_hash_check(tmp_path, monkeypatch):
     monkeypatch.setattr("edgesight.detector.create_session", fake_create_session)
     monkeypatch.setattr("edgesight.detector.OnnxDetector", lambda session, class_confidence: (session, class_confidence))
     monkeypatch.setattr("edgesight.tracker.OnnxTracker", lambda detector: ("tracker", detector))
+    monkeypatch.setattr("edgesight.detector.load_class_confidence", lambda model, required=True: {"cone": 0.23} if not required else None)
 
-    # A candidate never picks up the released model's per-class cutoffs
-    assert main.create_tracker("onnx", 2, model="candidate.onnx") == ("tracker", ("session", {}))
+    # A candidate's cutoffs are looked up without requiring a match (unlisted candidates get {})
+    assert main.create_tracker("onnx", 2, model="candidate.onnx") == ("tracker", ("session", {"cone": 0.23}))
     assert calls == {"model_path": "candidate.onnx", "intra_op_threads": 2, "verify_hash": False}
 
 
@@ -250,11 +252,15 @@ def test_detector_applies_class_confidence():
 
 def test_pytorch_detector_applies_class_confidence():
     fake_model = Mock()
+    fake_model.names = {0: "person"}
     fake_model.predict.return_value = [SimpleNamespace(boxes=[make_box(0.30)], names={0: "person"})]
 
     assert len(ObjectDetector(model=fake_model, confidence=0.40, class_confidence={"person": 0.25}).detect(np.zeros((480, 640, 3), dtype=np.uint8))) == 1
     assert fake_model.predict.call_args.kwargs["conf"] == 0.25
     assert ObjectDetector(model=fake_model, confidence=0.40, class_confidence={}).detect(np.zeros((480, 640, 3), dtype=np.uint8)) == []
+
+    with pytest.raises(ValueError, match="unknown classes"):
+        ObjectDetector(model=fake_model, class_confidence={"cones": 0.25})
 
 
 PX = np.linspace(0, 1, 1000)
@@ -302,6 +308,17 @@ def test_class_confidence_applies_only_to_its_model(tmp_path):
 
     with pytest.raises(ValueError, match="different model"):
         load_class_confidence(other, released)
+
+    # A --model candidate that is not listed runs at the single cutoff instead of failing
+    assert load_class_confidence(other, released, required=False) == {}
+
+    # An INT8 model quantized from the released ONNX file gets the release's cutoffs
+    int8 = tmp_path / "selected_int8_u8_no_head.onnx"
+    int8.write_bytes(b"int8")
+
+    assert register_derived(released, sha256_file(onnx), int8.stem, sha256_file(int8))
+    assert not register_derived(released, sha256_file(other), "from_other", "0" * 64)
+    assert load_class_confidence(int8, released, required=False) == {"cone": 0.23, "rock": 0.5}
 
 
 def test_held_out_frames_follow_the_testset_ranges():

@@ -129,7 +129,9 @@ python -m pytest -q tests/phase6_desktop_completion
 
 Run the full suite before committing: later phases change shared code such as the detector and tracker, which older phases' tests cover.
 
-The tests use synthetic frames, synthetic videos, and fake trackers, so they need no camera. The test that runs the real ONNX model on the validation images is skipped when `models/selected.onnx` or the images are missing.
+The tests use synthetic frames, synthetic videos, and fake trackers, so they need no camera. Two tests need local files and are skipped without them:
+- the one that runs the real ONNX model on the validation images, which needs `models/selected.onnx` and the images;
+- the one that checks a quantized model's interface, which needs `models/selected_int8_u8_no_head.onnx`.
 
 ## Project Layout
 

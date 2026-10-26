@@ -421,3 +421,23 @@ def test_build_testset_puts_every_frame_in_test(tmp_path, monkeypatch):
     assert not any((output / "images" / "train").iterdir())
     assert (output / "labels" / "test" / "a_f00000.txt").read_text() == "1 0.500000 0.500000 0.100000 0.100000\n"
     assert (output / "labels" / "test" / "empty_f00000.txt").read_text() == ""
+
+
+def test_failed_testset_build_leaves_nothing(tmp_path, monkeypatch):
+    import scripts.build_testset as build_testset
+
+    session = tmp_path / "raw" / "s"
+    session.mkdir(parents=True)
+    (session / "frames.json").write_text(json.dumps({"frames": [{"file": "a_f00000.jpg", "clip": "a", "frame_index": 0}]}))
+    export = tmp_path / "export"
+    (export / "labels" / "train").mkdir(parents=True)
+    (export / "data.yaml").write_text("names:\n  0: Rock\n  1: Cone\n  2: Debris\n")
+    (export / "labels" / "train" / "a_f00000.txt").write_text("1 0.5 0.5 0.1 0.1\n")
+    monkeypatch.setattr(build_testset, "RAW_ROOT", tmp_path / "raw")
+    testset = {"name": "t", "output": str(tmp_path / "out"), "session": "s", "labels": str(export), "clips": ["a"]}
+
+    # The frame's image is missing, so copying fails partway through
+    with pytest.raises(FileNotFoundError):
+        build_testset.build_testset(testset, [])
+
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["export", "raw"]

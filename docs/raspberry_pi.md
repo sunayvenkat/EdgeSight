@@ -103,10 +103,11 @@ The mission target is at least 3 FPS on the Raspberry Pi.
 2. Compare `--threads 3` and `--threads 4`. The camera capture thread competes with ONNX Runtime for the Pi's four cores.
 3. Compare against `--backend pytorch` under the same conditions.
 4. Re-run `scripts/tune_onnx.py` presets on the Pi; the current `runtime_config.json` was tuned on the desktop CPU. This needs `models/selected.pt` and the validation images.
-5. Benchmark INT8 against FP32 using the two best variants from `docs/quantization.md`: `u8_no_head` (primary) and `s8_no_decode`.
-   - The INT8 files in `models/archive/edgesight-ml-v1/` were built from v1. Rebuild them from the v2 release with `scripts/quantize_onnx.py` and re-check accuracy before benchmarking.
-   - Run them with `--model`.
-   - On the desktop, the s8 variants were 2.5–2.7× slower than FP32 because of x86 kernel coverage; ARM may differ.
+5. Benchmark INT8 against FP32 using the v2.1 candidates from `docs/quantization.md`: `u8_no_head` (primary) and `s8_no_head`.
+   - Copy `models/selected_int8_u8_no_head.onnx` (SHA-256 `5b3c19e4476ed4774e68e32488f1c8a8ca18380bc639f0fea269efba8273b449`) and `models/selected_int8_s8_no_head.onnx` (`e5618c06fb08466509e79103cfd77e0f5c69c794fbcd90739488c7bef90f781e`). Both are gitignored and were built from the v2.1 release.
+   - Run them with `--model`, e.g. `python main.py --headless --duration 60 --model models/selected_int8_u8_no_head.onnx`. Their hashes are listed in `models/class_confidence.json`, so they get the same per-class cutoffs as FP32.
+   - For session-level latency, use `python -m scripts.evaluate_quantization --stage latency --model u8_no_head --run 1 --tag pi`.
+   - On the desktop, the s8 variants were 2.4–2.6× slower than FP32 because of x86 kernel coverage; ARM may differ.
 6. Record temperature and throttling during sustained runs with `vcgencmd measure_temp` and `vcgencmd get_throttled`. The Pi 5 throttles under sustained load without cooling, so use the Active Cooler or equivalent for benchmarks.
 
 ## Hardware

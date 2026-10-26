@@ -78,13 +78,13 @@ def create_tracker(backend=None, threads=None, model=None):
 
         intra_op_threads = config.ONNX_INTRA_OP_THREADS if threads is None else threads
 
-        # Candidates run at the single cutoff; released cutoffs belong to the released model
+        # Released cutoffs apply to the release files and INT8 models built from them; other candidates run at the single cutoff
         if model is None:
             session = create_session(intra_op_threads=intra_op_threads)
             class_confidence = load_class_confidence(config.ONNX_MODEL_PATH)
         else:
             session = create_session(model_path=model, intra_op_threads=intra_op_threads, verify_hash=False)
-            class_confidence = {}
+            class_confidence = load_class_confidence(model, required=False)
 
         return OnnxTracker(OnnxDetector(session=session, class_confidence=class_confidence))
 
@@ -92,7 +92,10 @@ def create_tracker(backend=None, threads=None, model=None):
         from edgesight.detector import ObjectDetector, load_class_confidence
         from edgesight.tracker import ObjectTracker
 
-        return ObjectTracker(ObjectDetector(class_confidence=load_class_confidence(config.MODEL_PATH)) if model is None else ObjectDetector(model_path=model))
+        if model is None:
+            return ObjectTracker(ObjectDetector(class_confidence=load_class_confidence(config.MODEL_PATH)))
+
+        return ObjectTracker(ObjectDetector(model_path=model, class_confidence=load_class_confidence(model, required=False)))
 
     raise ValueError(f"Unknown inference backend: {backend!r}")
 

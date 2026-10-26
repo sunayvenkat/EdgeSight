@@ -43,6 +43,11 @@ class ObjectDetector:
             raise ValueError("Confidence must be between 0.0 and 1.0")
         self.confidence = confidence
 
+        unknown = sorted(set(self.class_confidence) - set(self.model.names.values())) if self.class_confidence else []
+
+        if unknown:
+            raise ValueError(f"Class confidence for unknown classes: {unknown}")
+
         # Ultralytics takes one threshold, so predict at the lowest and filter per class
         self.predict_confidence = min([confidence, *self.class_confidence.values()])
 
@@ -95,12 +100,15 @@ def sha256_file(path) -> str:
     return digest.hexdigest()
 
 
-def load_class_confidence(model_path, path=CLASS_CONFIDENCE_PATH) -> dict[str, float]:
+def load_class_confidence(model_path, path=CLASS_CONFIDENCE_PATH, required=True) -> dict[str, float]:
     """
     Per-class cutoffs released with this model, or {} (the single cutoff) when there are none.
 
-    The file records the hashes of the .onnx and .pt files it was tuned for, so
-    a rollback or another model never runs with cutoffs meant for a different one.
+    The file records the hashes of the .onnx and .pt files it was tuned for,
+    plus INT8 models quantized from that .onnx, so a rollback or another model
+    never runs with cutoffs meant for a different one. A model that is not
+    listed raises when required (the release files), and gets {} otherwise
+    (a --model candidate).
     """
     path = Path(path)
 
@@ -108,11 +116,15 @@ def load_class_confidence(model_path, path=CLASS_CONFIDENCE_PATH) -> dict[str, f
         return {}
 
     released = json.loads(path.read_text(encoding="utf-8"))
+    hashes = {released["onnx_sha256"], released["checkpoint_sha256"], *released.get("derived_sha256", {}).values()}
 
-    if sha256_file(model_path) not in (released["onnx_sha256"], released["checkpoint_sha256"]):
+    if sha256_file(model_path) in hashes:
+        return released["classes"]
+
+    if required:
         raise ValueError(f"{path.name} was tuned for a different model. Re-run scripts/tune_confidence.py --release, or remove it to use the single cutoff.")
 
-    return released["classes"]
+    return {}
 
 
 def create_session(model_path=ONNX_MODEL_PATH, runtime_config_path=RUNTIME_CONFIG_PATH, intra_op_threads=ONNX_INTRA_OP_THREADS, verify_hash=True) -> ort.InferenceSession:

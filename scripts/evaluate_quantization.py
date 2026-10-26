@@ -11,7 +11,7 @@ import onnxruntime as ort
 import psutil
 
 from edgesight.config import DETECTION_CONFIDENCE, NMS_IOU_THRESHOLD
-from edgesight.detector import OnnxDetector, preprocess, sha256_file
+from edgesight.detector import OnnxDetector, load_class_confidence, preprocess, sha256_file
 from scripts.benchmark_inference import IMAGE_DIR, load_images
 from scripts.compare_predictions import match_detections
 from scripts.evaluate_model import build_report
@@ -34,6 +34,11 @@ for activation in ("u8", "s8"):
 LATENCY_PRESET = "intra4"
 
 MATCH_IOU = 0.90
+
+
+def result_name(stage, name, tag=None, run=None):
+    """Result file name; a tag (e.g. v2_1) keeps a new release's results apart from earlier ones."""
+    return f"{stage}_{f'{tag}_' if tag else ''}{name}{f'_run{run}' if run else ''}.json"
 
 
 def model_path(name):
@@ -81,9 +86,9 @@ def summarize_consistency(per_image):
     }
 
 
-def run_accuracy(name):
+def run_accuracy(name, tag=None):
     path = model_path(name)
-    output_dir = OUTPUT_ROOT / f"accuracy_{name}.json"
+    output_dir = OUTPUT_ROOT / result_name("accuracy", name, tag)
 
     if output_dir.exists():
         raise FileExistsError(output_dir)
@@ -103,7 +108,7 @@ def run_accuracy(name):
         workers=0,
         plots=False,
         project=str(OUTPUT_ROOT / "val"),
-        name=name,
+        name=f"{tag}_{name}" if tag else name,
         exist_ok=False,
     )
 
@@ -118,17 +123,19 @@ def run_accuracy(name):
     print(f"{name}: P={report['precision']:.4f} R={report['recall']:.4f} mAP50={report['mAP50']:.4f} mAP50-95={report['mAP50_95']:.4f}")
 
 
-def run_consistency(name):
+def run_consistency(name, tag=None):
     if name == "fp32":
         raise ValueError("Compare an INT8 model against fp32")
 
-    output_path = OUTPUT_ROOT / f"consistency_{name}.json"
+    output_path = OUTPUT_ROOT / result_name("consistency", name, tag)
 
     if output_path.exists():
         raise FileExistsError(output_path)
 
-    reference = OnnxDetector(session=make_session(model_path("fp32")), confidence=DETECTION_CONFIDENCE, iou_threshold=NMS_IOU_THRESHOLD)
-    candidate = OnnxDetector(session=make_session(model_path(name)), confidence=DETECTION_CONFIDENCE, iou_threshold=NMS_IOU_THRESHOLD)
+    # Both models at the app's thresholds: the released per-class cutoffs, or the single cutoff without them
+    cutoffs = load_class_confidence(model_path("fp32"))
+    reference = OnnxDetector(session=make_session(model_path("fp32")), confidence=DETECTION_CONFIDENCE, iou_threshold=NMS_IOU_THRESHOLD, class_confidence=cutoffs)
+    candidate = OnnxDetector(session=make_session(model_path(name)), confidence=DETECTION_CONFIDENCE, iou_threshold=NMS_IOU_THRESHOLD, class_confidence=cutoffs)
 
     per_image = []
 
@@ -146,6 +153,7 @@ def run_consistency(name):
         "reference": "fp32",
         "candidate": name,
         "confidence": DETECTION_CONFIDENCE,
+        "class_confidence": cutoffs,
         "nms_iou": NMS_IOU_THRESHOLD,
         "match_iou_threshold": MATCH_IOU,
         "note": "pytorch_* fields hold the FP32 reference and onnx_* fields the INT8 candidate (compare_predictions naming).",
@@ -160,9 +168,9 @@ def run_consistency(name):
     print(name, report["summary"], "matched@0.5:", report["matched_at_iou50"])
 
 
-def run_latency(name, run, warmup, iterations):
+def run_latency(name, run, warmup, iterations, tag=None):
     path = model_path(name)
-    output_path = OUTPUT_ROOT / f"latency_{name}_run{run}.json"
+    output_path = OUTPUT_ROOT / result_name("latency", name, tag, run)
 
     if output_path.exists():
         raise FileExistsError(output_path)
@@ -222,6 +230,7 @@ def main():
     parser.add_argument("--run", type=int, default=1)
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--iterations", type=int, default=100)
+    parser.add_argument("--tag", default=None, help="Prefix for a new release's result files, e.g. v2_1 (default: v1 file names)")
 
     args = parser.parse_args()
 
@@ -229,11 +238,11 @@ def main():
         parser.error("Invalid benchmark parameters")
 
     if args.stage == "accuracy":
-        run_accuracy(args.model)
+        run_accuracy(args.model, args.tag)
     elif args.stage == "consistency":
-        run_consistency(args.model)
+        run_consistency(args.model, args.tag)
     else:
-        run_latency(args.model, args.run, args.warmup, args.iterations)
+        run_latency(args.model, args.run, args.warmup, args.iterations, args.tag)
 
 
 if __name__ == "__main__":

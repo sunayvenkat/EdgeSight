@@ -15,6 +15,7 @@ import onnxruntime as ort
 from onnxruntime.quantization import (CalibrationDataReader, CalibrationMethod, QuantFormat, QuantType, quantize_static)
 from onnxruntime.quantization.shape_inference import quant_pre_process
 
+from edgesight.config import CLASS_CONFIDENCE_PATH
 from edgesight.detector import preprocess, sha256_file
 
 
@@ -176,6 +177,28 @@ def update_manifest(path, key, entry, calibration):
     return manifest
 
 
+def register_derived(cutoffs_path, source_hash, name, output_hash):
+    """
+    Record an INT8 model built from the released FP32 model in the release's
+    class_confidence.json, so the app applies the same per-class cutoffs to it.
+    Returns False when there is no cutoff file or the source is not the release.
+    """
+    cutoffs_path = Path(cutoffs_path)
+
+    if not cutoffs_path.is_file():
+        return False
+
+    released = json.loads(cutoffs_path.read_text(encoding="utf-8"))
+
+    if released["onnx_sha256"] != source_hash:
+        return False
+
+    released.setdefault("derived_sha256", {})[name] = output_hash
+    cutoffs_path.write_text(json.dumps(released, indent=2), encoding="utf-8")
+
+    return True
+
+
 def quantize(source_path, output_path, variant, calibration_paths, calibrate_method, activation_type, weight_type):
     """Pre-process, calibrate, and statically quantize one variant."""
 
@@ -220,6 +243,7 @@ def main():
     parser.add_argument("--calibrate-method", choices=CALIBRATION_METHODS.keys(), default="minmax")
     # x86 ONNX Runtime only fuses QDQ Conv into QLinearConv for uint8 activations (U8S8).
     parser.add_argument("--activation-type", choices=["qint8", "quint8"], default="quint8")
+    parser.add_argument("--calibration-dir", type=Path, default=CALIBRATION_DIR, help="Training images to calibrate on (default: v1's stock photos); never validation or test images")
     parser.add_argument("--manifest", default=str(MANIFEST_PATH))
     parser.add_argument("--force", action="store_true", help="Overwrite an existing output model")
 
@@ -237,12 +261,17 @@ def main():
         raise FileExistsError(f"{output_path} exists. Pass --force to overwrite.")
 
     source_hash = verify_source(source_path)
-    calibration_paths = list_calibration_images(CALIBRATION_DIR)
+    calibration_dir = (args.calibration_dir if args.calibration_dir.is_absolute() else PROJECT_ROOT / args.calibration_dir).resolve()
+
+    if calibration_dir.name in ("val", "test"):
+        parser.error("Calibrate on training images only; validation and test images must stay unseen")
+
+    calibration_paths = list_calibration_images(calibration_dir)
 
     activation_type = QuantType.QInt8 if args.activation_type == "qint8" else QuantType.QUInt8
 
     print(f"Variant: {args.variant} ({VARIANTS[args.variant]})")
-    print(f"Calibration images: {len(calibration_paths)} from {CALIBRATION_DIR.relative_to(PROJECT_ROOT).as_posix()}")
+    print(f"Calibration images: {len(calibration_paths)} from {calibration_dir.relative_to(PROJECT_ROOT).as_posix()}")
 
     start = time.perf_counter()
 
@@ -296,12 +325,15 @@ def main():
 
     calibration = {
         "split": "train",
-        "directory": CALIBRATION_DIR.relative_to(PROJECT_ROOT).as_posix(),
+        "directory": calibration_dir.relative_to(PROJECT_ROOT).as_posix(),
         "count": len(calibration_paths),
         "images": {path.name: sha256_file(path) for path in calibration_paths},
     }
 
     update_manifest(args.manifest, output_path.stem, entry, calibration)
+
+    if register_derived(CLASS_CONFIDENCE_PATH, source_hash, output_path.stem, entry["output_sha256"]):
+        print(f"Registered in {Path(CLASS_CONFIDENCE_PATH).name}: the app applies the release's per-class cutoffs to this model")
 
     print(f"Excluded nodes: {len(excluded)}")
     print(f"QDQ nodes: {qdq_counts}")

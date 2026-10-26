@@ -244,13 +244,16 @@ def test_archive_release_moves_files(tmp_path):
     (tmp_path / "selection.json").write_text('{"release": "edgesight-ml-v1"}', encoding="utf-8")
     (tmp_path / "selected.pt").write_bytes(b"weights")
     (tmp_path / "quantization_manifest.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "selected_int8_u8_no_head.onnx").write_bytes(b"int8")
+    (tmp_path / "notes.txt").write_text("not a release file", encoding="utf-8")
 
     archive_dir, moved = archive_release(tmp_path)
 
+    # INT8 models and their manifest belong to the release they were quantized from
     assert archive_dir == tmp_path / "archive" / "edgesight-ml-v1"
-    assert sorted(moved) == ["selected.pt", "selection.json"]
+    assert sorted(moved) == ["quantization_manifest.json", "selected.pt", "selected_int8_u8_no_head.onnx", "selection.json"]
     assert not (tmp_path / "selected.pt").exists()
-    assert (tmp_path / "quantization_manifest.json").exists()
+    assert (tmp_path / "notes.txt").exists()
 
     with pytest.raises(FileNotFoundError):
         archive_release(tmp_path)

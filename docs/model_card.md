@@ -112,6 +112,7 @@ The same recipe with seed 7 detected cones in 84.5% of frames and debris in 98.8
 - Dataset split fingerprint: `fd3234a51aafdf6611e982714c8b69f70946fa46c173dc42ee8696a34ab49ffc` (`docs/split_lock_v2_1b.json`). The validation and test images are unchanged since v1.
 - Confidence cutoffs: `runs/cv/confidence_tuning_long_aug.json`, released as `models/class_confidence.json`
 - Runtime settings: `models/runtime_config.json`, re-tuned for v2.1 (`scripts/tune_onnx.py --tag v2_1`)
+- INT8 candidates for the Pi: `models/quantization_manifest.json`. `u8_no_head` and `s8_no_head` were quantized from this release and meet every test-clip target (`docs/quantization.md`).
 - Python 3.14.7, PyTorch 2.14.1+cpu, Ultralytics 8.4.175
 
 ## Limitations

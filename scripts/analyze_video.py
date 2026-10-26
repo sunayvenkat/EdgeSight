@@ -181,14 +181,14 @@ def main():
     parser.add_argument("--model", type=Path, default=None, help="Candidate .onnx model (default: the released models/selected.onnx)")
     parser.add_argument("--name", default=None, help="Output name (default: the video's file name)")
     parser.add_argument("--role", choices=["test", "diagnostic"], default="test", help="test: a held-out test clip (scripts/build_dataset.py refuses to train on it); diagnostic: training footage analyzed for reference")
-    parser.add_argument("--class-confidence", type=Path, default=None, help="Per-class cutoffs from scripts/tune_confidence.py (default: the released model's cutoffs; none for --model)")
+    parser.add_argument("--class-confidence", type=Path, default=None, help="Per-class cutoffs from scripts/tune_confidence.py (default: the released cutoffs, for the release files and INT8 models built from them)")
 
     args = parser.parse_args()
 
     if args.class_confidence is not None:
         class_confidence = {name: row["cutoff"] for name, row in json.loads(args.class_confidence.read_text(encoding="utf-8"))["classes"].items()}
     else:
-        class_confidence = load_class_confidence(config.ONNX_MODEL_PATH) if args.model is None else {}
+        class_confidence = load_class_confidence(args.model or config.ONNX_MODEL_PATH, required=args.model is None)
 
     if not args.video.is_file():
         parser.error(f"Video not found: {args.video}")

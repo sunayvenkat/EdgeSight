@@ -4,6 +4,86 @@
 
 Determine whether a statically quantized INT8 ONNX model keeps the selected detector's accuracy while reducing CPU latency, to decide whether INT8 should be carried into Raspberry Pi 5 benchmarking.
 
+## Current: INT8 for edgesight-ml-v2.1 (2026-10-26)
+
+The INT8 models were rebuilt from the v2.1 release (`models/selected.onnx`, SHA-256 `bb701896…d239`). The method is the v1 experiment's (described in the sections after this one), with three changes:
+- **Calibration:** the 262 v2.1 training images (`datasets/rover_obstacles_v2_1b/images/train`), which include real-world and background frames, instead of v1's 51 stock photos. Validation and test images were never used, and the script refuses `val` and `test` folders.
+- **Variants:** only the four working variants were built. The `full` variants detect nothing with this output layout (see "Full quantization breaks the model" below), and that does not depend on the model's weights.
+- **Thresholds:** consistency and test-clip scoring use the release's per-class cutoffs (rock 0.50, cone 0.23, debris 0.23). Each INT8 model's hash is recorded in `models/class_confidence.json` under `derived_sha256`, so the app applies the same cutoffs when it runs one with `--model`.
+
+```
+python -m scripts.quantize_onnx --variant {no_decode,no_head} --activation-type {quint8,qint8} --calibration-dir datasets/rover_obstacles_v2_1b/images/train
+python -m scripts.evaluate_quantization --stage {accuracy,consistency,latency} --model {fp32,u8_no_head,...} --tag v2_1
+python -m scripts.analyze_video clips/<clip>.mp4 --expect <class> --model models/selected_int8_u8_no_head.onnx
+```
+
+### Validation accuracy (21 stock photos, 640, batch 1)
+
+| Model | Precision | Recall | mAP50 | mAP50-95 | Δ mAP50-95 vs FP32 | Size |
+|---|---:|---:|---:|---:|---:|---:|
+| FP32 | 0.758 | 0.583 | 0.689 | 0.4815 | — | 9.85 MB |
+| u8_no_decode | 0.688 | 0.519 | 0.657 | 0.4513 | −0.030 (−6.3%) | 3.12 MB |
+| u8_no_head | 0.814 | 0.497 | 0.667 | 0.4662 | −0.015 (−3.2%) | 3.44 MB |
+| s8_no_decode | 0.711 | 0.555 | 0.665 | 0.4562 | −0.025 (−5.3%) | 3.13 MB |
+| s8_no_head | 0.820 | 0.482 | 0.671 | 0.4673 | −0.014 (−2.9%) | 3.44 MB |
+
+Sources: `runs/quantization/accuracy_v2_1_<model>.json`; sizes from `models/quantization_manifest.json`.
+
+### Agreement with FP32 at the released cutoffs
+
+FP32 made 69 detections on the 21 validation images.
+
+| INT8 model | INT8 detections | Matched (IoU ≥ 0.90) | Matched (IoU ≥ 0.50) | Mean matched IoU |
+|---|---:|---:|---:|---:|
+| u8_no_decode | 64 | 54 | 60 | 0.959 |
+| u8_no_head | 63 | 54 | 60 | 0.975 |
+| s8_no_decode | 66 | 53 | 60 | 0.961 |
+| s8_no_head | 64 | 54 | 60 | 0.971 |
+
+Sources: `runs/quantization/consistency_v2_1_<model>.json`.
+
+### Latency (direct `session.run`, 4 threads, desktop)
+
+| Model | Median | p95 | FPS | Peak RSS | Median vs FP32 |
+|---|---:|---:|---:|---:|---:|
+| FP32 | 15.77 ms | 17.33 ms | 62.5 | 494 MB | — |
+| u8_no_decode | 10.92 ms | 11.95 ms | 90.4 | 434 MB | −31% |
+| u8_no_head | 11.53 ms | 12.28 ms | 85.8 | 437 MB | −27% |
+| s8_no_decode | 41.45 ms | 42.97 ms | 24.0 | 501 MB | +163% |
+| s8_no_head | 37.69 ms | 39.12 ms | 26.4 | 500 MB | +139% |
+
+Medians, p95, and FPS are means of three interleaved runs; RSS is the largest. Per-run medians varied by at most 0.45 ms. Sources: `runs/quantization/latency_v2_1_<model>_run1-3.json`.
+
+### Pi candidates and test-clip check
+
+The candidates were chosen on the results above, before the test clips were scored:
+- **`u8_no_head` (primary):** the best accuracy of the fast variants, 27% faster, with the tightest boxes against FP32.
+- **`s8_no_head`:** the best accuracy overall. It is slow on this x86 CPU, but ARM's INT8 kernels may favor signed activations, so it is worth measuring on the Pi.
+
+Both were then scored once on the four test clips, through `--model` with the cutoffs applied automatically:
+
+| Measure | Target | FP32 v2.1 | u8_no_head | s8_no_head |
+|---|---|---:|---:|---:|
+| Cones detected | ≥ 70% | 81.0% | 80.6% | 80.4% |
+| Rocks detected | ≥ 85% | 88.3% | 88.5% | 88.1% |
+| Debris detected | ≥ 70% | 92.4% | 85.8% | 86.1% |
+| False CAUTION, empty clip | ≤ 5% | 0.0% | 0.0% | 0.0% |
+
+Sources: `runs/video_analysis/d_*.json` (FP32) and `q_<model>_*.json`.
+
+### What this shows
+
+- The v1 findings hold for v2.1:
+  - keeping the head in FP32 costs about 3% mAP50-95;
+  - `u8` activations are 27–31% faster on this CPU;
+  - `s8` activations are 2.4–2.6× slower here.
+- Both candidates meet every target on the test clips. Debris detection drops the most, by 6–7 points, but stays well above 70%.
+- **Recommendation (advisory; the decision is the user's):** benchmark FP32, `u8_no_head`, and `s8_no_head` on the Pi in 8.2. Keep FP32 as the default unless an INT8 model's measured gain on the Pi is worth its accuracy loss.
+
+## v1 Experiment (2026-10-22)
+
+The rest of this document is the original experiment on edgesight-ml-v1. Its INT8 files are archived in `models/archive/edgesight-ml-v1/`.
+
 ## Model Information
 
 - Architecture: YOLO26n
@@ -172,7 +252,7 @@ Sources: `runs/quantization/latency_<model>_run1-3.json`, `models/quantization_m
 - Calibration used 51 training images with MinMax ranges only. Entropy or percentile calibration and larger calibration sets were not tried.
 - Latency times only `session.run`. Preprocessing, decode, NMS, tracking, capture, and display are excluded, so end-to-end frame-time savings will be smaller.
 - Quantized arithmetic can differ slightly between CPU architectures, so accuracy and consistency should be re-checked on the Pi rather than assumed.
-- The app cannot load these models yet: `create_session()` accepts only the FP32 hash in `models/runtime_config.json`.
+- The app could not load these models at the time: `create_session()` accepted only the FP32 hash in `models/runtime_config.json`. It can now, with `--model` (see the v2.1 section above).
 
 ## Conclusion and Recommendation
 
