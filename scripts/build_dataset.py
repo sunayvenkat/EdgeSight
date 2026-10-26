@@ -11,6 +11,7 @@ import shutil
 import zipfile
 from collections import Counter
 from pathlib import Path
+from xml.etree import ElementTree
 
 import yaml
 
@@ -37,23 +38,67 @@ def resolve(path) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
+def read_cvat_xml(xml_text: str) -> dict[str, str]:
+    """
+    Convert a "CVAT for images 1.1" annotations.xml to {image stem: YOLO label text}.
+
+    Classes are matched by label name, ignoring case. Images with no boxes get
+    an empty label. Rotated boxes and other shape types are rejected, since
+    YOLO detection labels are axis-aligned boxes.
+    """
+    class_ids = {name: class_id for class_id, name in CLASS_NAMES.items()}
+    root = ElementTree.fromstring(xml_text)
+    labels = {}
+
+    for image in root.iter("image"):
+        width, height = float(image.get("width")), float(image.get("height"))
+        lines = []
+
+        for shape in image:
+            if shape.tag != "box":
+                raise ValueError(f"{image.get('name')}: unsupported CVAT shape <{shape.tag}>; use rectangles only")
+
+            if float(shape.get("rotation", "0")) != 0:
+                raise ValueError(f"{image.get('name')}: rotated box; YOLO boxes must be axis-aligned")
+
+            name = shape.get("label", "").lower()
+
+            if name not in class_ids:
+                raise ValueError(f"{image.get('name')}: unknown label {shape.get('label')!r}")
+
+            x1, y1, x2, y2 = (float(shape.get(key)) for key in ("xtl", "ytl", "xbr", "ybr"))
+            lines.append(f"{class_ids[name]} {(x1 + x2) / 2 / width:.6f} {(y1 + y2) / 2 / height:.6f} {(x2 - x1) / width:.6f} {(y2 - y1) / height:.6f}")
+
+        labels[Path(image.get("name")).stem] = "".join(line + "\n" for line in lines)
+
+    return labels
+
+
 def read_cvat_export(path: Path) -> dict[str, str]:
     """
-    Read an "Ultralytics YOLO Detection 1.0" export (folder or zip) from CVAT.
+    Read a CVAT export (folder or zip): "Ultralytics YOLO Detection 1.0", or
+    "CVAT for images 1.1" (annotations.xml).
 
-    Returns {image stem: label text}. The export's class order must match
-    CLASS_NAMES, ignoring case, so classes cannot be silently swapped.
+    Returns {image stem: label text}. For YOLO exports, the class order must
+    match CLASS_NAMES, ignoring case, so classes cannot be silently swapped;
+    XML exports are matched by label name.
     """
     if path.is_dir():
+        if (path / "annotations.xml").is_file():
+            return read_cvat_xml((path / "annotations.xml").read_text(encoding="utf-8"))
+
         files = {str(item.relative_to(path)).replace("\\", "/"): item.read_text(encoding="utf-8") for item in path.rglob("*") if item.is_file() and item.suffix in {".yaml", ".txt"}}
     elif zipfile.is_zipfile(path):
         with zipfile.ZipFile(path) as archive:
+            if "annotations.xml" in archive.namelist():
+                return read_cvat_xml(archive.read("annotations.xml").decode("utf-8"))
+
             files = {name: archive.read(name).decode("utf-8") for name in archive.namelist() if name.endswith((".yaml", ".txt"))}
     else:
         raise FileNotFoundError(f"CVAT export not found: {path}")
 
     if "data.yaml" not in files:
-        raise ValueError(f"{path} has no data.yaml; export from CVAT as 'Ultralytics YOLO Detection 1.0'")
+        raise ValueError(f"{path} has no data.yaml or annotations.xml; export from CVAT as 'Ultralytics YOLO Detection 1.0' or 'CVAT for images 1.1'")
 
     names = yaml.safe_load(files["data.yaml"]).get("names", {})
     export_names = {int(key): str(value).lower() for key, value in names.items()}
@@ -62,6 +107,33 @@ def read_cvat_export(path: Path) -> dict[str, str]:
         raise ValueError(f"CVAT class order {export_names} does not match {CLASS_NAMES}")
 
     return {Path(name).stem: text for name, text in files.items() if name.startswith("labels/") and name.endswith(".txt")}
+
+
+def remove_label_lines(labels, remove_boxes):
+    """
+    Drop specific boxes from exported labels without editing the export.
+
+    remove_boxes maps an image stem to 1-based line numbers in that image's
+    exported label text (for example, single leaves boxed as debris against
+    the labeling rules). Unknown stems or line numbers raise, so a stale list
+    cannot silently remove the wrong boxes.
+    """
+    labels = dict(labels)
+
+    for stem, line_numbers in remove_boxes.items():
+        if stem not in labels:
+            raise ValueError(f"remove_boxes: no labels for {stem}")
+
+        lines = labels[stem].splitlines()
+        invalid = [number for number in line_numbers if not 1 <= number <= len(lines)]
+
+        if invalid:
+            raise ValueError(f"remove_boxes: {stem} has no line(s) {invalid}")
+
+        drop = set(line_numbers)
+        labels[stem] = "".join(line + "\n" for number, line in enumerate(lines, start=1) if number not in drop)
+
+    return labels
 
 
 def clip_label_text(text, tolerance=1e-4):
@@ -215,6 +287,7 @@ def main():
                 raise ValueError(f"Clip {clip} is a test clip from docs/video_evaluation.md and cannot be used for training")
 
         labels = read_cvat_export(resolve(session["labels"])) if session.get("labels") else {}
+        labels = remove_label_lines(labels, session.get("remove_boxes", {}))
 
         for stem, text in labels.items():
             labels[stem], clipped = clip_label_text(text)

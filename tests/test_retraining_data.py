@@ -347,3 +347,46 @@ def test_failed_build_leaves_no_partial_output(tmp_path, monkeypatch):
 
     assert not (tmp_path / "v2").exists()
     assert not any(path.name.endswith(".building") for path in tmp_path.iterdir())
+
+
+CVAT_XML = """<?xml version="1.0" encoding="utf-8"?>
+<annotations>
+  <image id="0" name="more_cones_f00000.jpg" width="100" height="50">
+    <box label="Cone" occluded="0" xtl="10" ytl="5" xbr="30" ybr="45" z_order="0"></box>
+    <box label="debris" occluded="1" xtl="50" ytl="20" xbr="90" ybr="30" z_order="0"></box>
+  </image>
+  <image id="1" name="more_cones_f00030.jpg" width="100" height="50"></image>
+</annotations>
+"""
+
+
+def test_read_cvat_xml_converts_boxes_by_label_name():
+    labels = build_dataset.read_cvat_xml(CVAT_XML)
+
+    assert labels["more_cones_f00000"] == "1 0.200000 0.500000 0.200000 0.800000\n2 0.700000 0.500000 0.400000 0.200000\n"
+    assert labels["more_cones_f00030"] == ""
+
+
+@pytest.mark.parametrize("replacement, message", [
+    ('<box label="Cone" rotation="15.0"', "rotated"),
+    ('<box label="Bollard"', "unknown label"),
+])
+def test_read_cvat_xml_rejects_bad_boxes(replacement, message):
+    with pytest.raises(ValueError, match=message):
+        build_dataset.read_cvat_xml(CVAT_XML.replace('<box label="Cone"', replacement, 1))
+
+
+def test_read_cvat_xml_rejects_non_box_shapes():
+    xml = CVAT_XML.replace('<box label="debris"', '<polygon label="debris" points="1,1;2,2;3,1"').replace('z_order="0"></box>\n  </image>', 'z_order="0"></polygon>\n  </image>', 1)
+
+    with pytest.raises(ValueError, match="unsupported CVAT shape"):
+        build_dataset.read_cvat_xml(xml)
+
+
+def test_read_cvat_export_detects_xml_in_zip(tmp_path):
+    archive = tmp_path / "export.zip"
+
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("annotations.xml", CVAT_XML)
+
+    assert set(build_dataset.read_cvat_export(archive)) == {"more_cones_f00000", "more_cones_f00030"}

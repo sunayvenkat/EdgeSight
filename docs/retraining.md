@@ -106,6 +106,30 @@ Five frames were reviewed and left with no boxes, which CVAT exports as no file.
 | `mixed_2` | 867 rock detections in 513 frames, many on pale leaves; median box 0.6% of the frame |
 | `empty_2` | False detections in 13.5% of frames; CAUTION in 46 of 576 frames |
 
+### Session 005 (recorded 2026-10-25, for v2.1)
+
+| Clip | Use | Frames | Notes |
+|---|---|---:|---|
+| `more_cones` | Train | 58 | 1080p at 60 FPS, extracted every 30th frame (`--every 30`); 23 blurry pan frames skipped. Scenes: delineator posts in a parking lot; traffic cones at roadsides and crosswalks; traffic cones behind a running-track chain-link fence, one tipped over; a close-up traffic cone. Overcast lighting. The locations differ from the `cones.mp4` test clip. |
+
+**v2 on this clip** (diagnostic, `runs/video_analysis/v2_more_cones.json`):
+- cones detected in 18.2% of frames overall;
+- 10.4% for the parking-lot posts, 18.4% at the road and crosswalk, and 5.1% behind the track fence;
+- the close-up cone was detected at confidence 0.80 or higher.
+
+Distant cones are the gap.
+
+Pre-labeling with v2 suggested only 18 cone boxes across the 58 frames, so most cones will be drawn by hand. The v2.1 plan is `datasets/rover_obstacles_v2_1_plan.json`: the v2 data plus this session.
+
+**Labels:** `more_cones_export.zip`, exported as CVAT for images 1.1.
+- 77 cone boxes across all 58 frames.
+- The median cone box is 0.69% of the frame, and the smallest 0.13%.
+- All 8 rock and debris pre-label suggestions were removed as false.
+
+**Dataset:** `datasets/rover_obstacles_v2_1` (split lock: `docs/split_lock_v2_1.json`).
+- train: 279 images, 44 of them background; 212 cone, 291 debris, and 169 rock boxes
+- validation and test: unchanged from v2
+
 ## Results
 
 ### Candidate A: background frames only (ablation, 2026-10-24)
@@ -160,6 +184,80 @@ Sources: `runs/video_analysis/b_*.json`; `runs/evaluation/pilot_v3_real_v2val_64
 - negatives containing drainage grates and scattered single leaves;
 - held-out real-world validation clips.
 
+### Candidate v2.1: v2 data plus `more_cones` (2026-10-25, not released)
+
+The training data was `datasets/rover_obstacles_v2_1`: 279 images, 212 cone boxes, at image size 640 with seed 42. Training stopped early at epoch 33, and the best epoch on stock validation was 23 (`runs/train/pilot_v4_cones/results.csv`, 1,770 s).
+
+| Measure | Target | v2 (released) | v2.1 (best.pt, epoch 23) |
+|---|---|---:|---:|
+| Cones detected | ≥ 70% | 45.9% | 63.2% |
+| Debris detected | ≥ 70% | 76.6% | 49.1% |
+| Rocks detected | ≥ 85% | 92.2% | 86.5% |
+| False CAUTION, empty clip | ≤ 5% | 1.4% | 0.7% |
+| Stock-photo validation mAP50-95 (640) | ≥ 0.35 | 0.441 | 0.458 |
+
+Sources: `runs/video_analysis/c_*.json`; `runs/evaluation/pilot_v4_cones_v2_1val_640/summary.json`.
+
+**Diagnostic: the final-epoch checkpoint.** Epoch 33 (`last.pt`, analyzed with `--role diagnostic`) detected cones in 79.5% of cone-clip frames and debris in 57.4% of debris-clip frames, yet scored lower on stock validation (mAP50-95 0.424 vs 0.452).
+
+**Findings:**
+- **More cone data helped cones,** from 45.9% to 63.2%, and to 79.5% at the final epoch.
+- **Debris regressed to near the v1 level,** even though v2.1 has every v2 debris label.
+- **Stock-photo validation selects checkpoints that are worse on real footage.** Within one run, cone detection swung from 63% to 80% across ten epochs while the stock score moved the other way. Together with the debris swing, this shows large epoch-to-epoch and run-to-run variance at this data size.
+- **The final epoch was not adopted.** Choosing it because it scored well on the test clips would turn the test set into a selection set and inflate the results.
+
+**Decision:** v2 stays the release. Before another candidate is selected, v2.1 needs:
+- **held-out real-world validation clips** for each class and an empty scene, from locations used in neither training nor testing, so that checkpoints and models are selected on real footage;
+- **training that selects checkpoints on that validation set,** possibly with more patience before early stopping;
+- **more than one seed,** to measure variance before attributing changes to data.
+
+### Overnight preparation for v2.1 (2026-10-25)
+
+Candidate v2.1 showed that stock-photo validation chooses the wrong checkpoints. These steps replace it with real-world evaluation, using only existing footage.
+
+**More_cones scenes.** Session 005 frames are grouped by location:
+- `posts_lot`: frames 0–530
+- `crosswalk_curve`: frames 530–600 and 1280–1430, the same crosswalk filmed twice
+- `roadside`: frames 800–1130
+- `track_fence`: frames 1430–1960, traffic cones behind the running-track fence with one tipped over; 17 labeled frames and 20 cones
+- `crosswalk_tree`: frames 1960–2442, including the close-up
+
+`track_fence` is reserved as a possible test scene and excluded from cross-validation until the user decides.
+
+**Debris label audit** (`datasets/rover_obstacles/raw/session_004/debris_review/`):
+- 36 small, square-ish debris boxes were flagged.
+- **#8–#36 (29 boxes, `mixed_2`) are isolated single leaves,** which break the labeling rules. They are removed through `remove_boxes` in `datasets/rover_obstacles_v2_1_plan.json` and `datasets/cv_plan.json`; the CVAT export itself is unchanged.
+- #1–#7 (`debris_2`, a curled piece of bark or stick) are kept.
+- Pending user confirmation.
+
+**Test-set labeling package** (`datasets/rover_obstacles/raw/testset_001/`):
+- 130 frames sampled every 15th frame from the four test clips.
+- 91 need labels; the 39 `empty.mp4` frames become backgrounds.
+- Labels used only for scoring never enter training. They replace the "class appears in X% of frames" proxy with real precision, recall, and mAP on real video.
+
+**Cross-validation by location** (`scripts/cross_validate.py`, `datasets/cv_plan.json`):
+- **Folds:** fold 1 holds out `cones_2`, `debris_2`, and the first half of `empty_2`. Fold 2 holds out the four non-reserved `more_cones` scenes, `mixed_2`, and the second half of `empty_2`.
+- **Settings compared:**
+  - `baseline`: 50 epochs, patience 10, mosaic 0.5
+  - `long`: 100 epochs, patience 30, mosaic 1.0
+  - `long_aug`: `long` plus scale 0.7, hsv_v 0.5, translate 0.15
+  - `long_nostock`: `long` without v1's stock photos
+- **Scoring:** each run is scored on its fold's held-out real frames (mAP, per-class mAP50, and the background false-positive rate at confidence 0.40).
+- **Results:** `runs/cv/summary.md` and `runs/cv/summary.json`.
+
+**Morning checklist (user):**
+1. **Label the test frames.** Upload `testset_001/cvat_images.zip` to a new CVAT task (labels Rock, Cone, Debris) and label all 91 frames.
+   - Pre-labels (`cvat_prelabels.zip`) speed this up but come from v2, the model being evaluated. Check every box, so its mistakes don't become "ground truth".
+   - Export in either format into `testset_001/`.
+2. **Confirm the debris removals** on `debris_review/flagged_debris_page1.jpg`: #8–#36 removed, #1–#7 kept.
+3. **Decide the `track_fence` scene.** Move it to the test set, which adds traffic cones and the fence condition to testing, or keep it for training.
+
+**After that (Claude):**
+- Build the labeled test set.
+- Choose settings from cross-validation, and train the final v2.1 on all training data, with 2–3 seeds if the folds show high variance.
+- Tune CAUTION persistence and per-class confidence cutoffs on the cross-validation predictions.
+- Score once on the labeled test set and the test clips, then decide on release.
+
 ### Release (2026-10-24)
 
 Candidate B was released as **edgesight-ml-v2**, with the missed cone target recorded.
@@ -211,7 +309,7 @@ Frames from clips named `empty*` are left out (`--exclude` changes the patterns)
 
 ### 3. Correct in CVAT
 
-Fix the suggested boxes against the Class Definitions and Labeling Rules above. Expect to delete many large, wrong boxes; that is the v1 failure being corrected. Add any missed objects. When done, export the task as **Ultralytics YOLO Detection 1.0** and save the zip, for example as `datasets/rover_obstacles/raw/session_004/cvat_export.zip`.
+Fix the suggested boxes against the Class Definitions and Labeling Rules above. Expect to delete many large, wrong boxes; that is the v1 failure being corrected. Add any missed objects. When done, export the task as **Ultralytics YOLO Detection 1.0** or **CVAT for images 1.1** and save the zip in the session folder, for example as `datasets/rover_obstacles/raw/session_004/cvat_export.zip`. The builder reads either format; for the XML format, it matches classes by label name and gives frames with no boxes empty labels.
 
 ### 4. Build the dataset
 

@@ -1,0 +1,112 @@
+{
+  "description": "edgesight-ml-v2.1 candidate: the v2 data plus session_005 (more_cones: delineator posts and traffic cones across backgrounds and distances, including behind a fence). Validation is still v1's 21 stock photos.",
+  "base": {
+    "dataset": "datasets/rover_obstacles",
+    "splits": {
+      "train": "train",
+      "val": "val",
+      "test": "test"
+    }
+  },
+  "sessions": [
+    {
+      "session": "session_004",
+      "labels": "datasets/rover_obstacles/raw/session_004/cvat_export.zip",
+      "clips": {
+        "cones_2": "train",
+        "debris_2": "train",
+        "mixed_2": "train",
+        "empty_2": "train"
+      },
+      "empty_frames": [
+        "cones_2_f00660",
+        "cones_2_f00675",
+        "cones_2_f00690",
+        "cones_2_f00705",
+        "mixed_2_f00555"
+      ],
+      "empty_frames_note": "Reviewed in CVAT and left with no boxes (parking lot with no posts in view, a post sliver at the frame edge, leaf-covered terrain); CVAT exports no file for these.",
+      "remove_boxes": {
+        "mixed_2_f00030": [
+          4,
+          5,
+          6
+        ],
+        "mixed_2_f00045": [
+          2,
+          4
+        ],
+        "mixed_2_f00075": [
+          1,
+          2
+        ],
+        "mixed_2_f00090": [
+          3,
+          4
+        ],
+        "mixed_2_f00105": [
+          2,
+          6
+        ],
+        "mixed_2_f00120": [
+          2
+        ],
+        "mixed_2_f00255": [
+          2
+        ],
+        "mixed_2_f00330": [
+          1
+        ],
+        "mixed_2_f00345": [
+          3
+        ],
+        "mixed_2_f00375": [
+          2
+        ],
+        "mixed_2_f00390": [
+          3
+        ],
+        "mixed_2_f00405": [
+          2
+        ],
+        "mixed_2_f00420": [
+          2
+        ],
+        "mixed_2_f00435": [
+          1,
+          4
+        ],
+        "mixed_2_f00450": [
+          1
+        ],
+        "mixed_2_f00465": [
+          1,
+          4
+        ],
+        "mixed_2_f00510": [
+          1,
+          4
+        ],
+        "mixed_2_f00525": [
+          2,
+          3
+        ],
+        "mixed_2_f00540": [
+          1
+        ]
+      },
+      "remove_boxes_note": "Single leaves boxed as debris in mixed_2 (#8-#36 in datasets/rover_obstacles/raw/session_004/debris_review/); removed 2026-10-25 pending user confirmation."
+    },
+    {
+      "session": "session_005",
+      "labels": "datasets/rover_obstacles/raw/session_005/more_cones_export.zip",
+      "clips": {
+        "more_cones": "train"
+      },
+      "labels_note": "Exported from CVAT as 'CVAT for images 1.1' (annotations.xml); read by scripts/build_dataset.py."
+    }
+  ],
+  "background_clips": [
+    "empty*"
+  ]
+}

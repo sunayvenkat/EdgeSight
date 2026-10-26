@@ -1,0 +1,210 @@
+{
+  "description": "Cross-validation by location (grouped 2-fold) for v2.1 training settings. Each group is one location. track_fence is reserved (excluded) as a possible test scene pending the user's decision.",
+  "base": {
+    "dataset": "datasets/rover_obstacles",
+    "split": "train"
+  },
+  "sessions": [
+    {
+      "session": "session_004",
+      "labels": "datasets/rover_obstacles/raw/session_004/cvat_export.zip",
+      "empty_frames": [
+        "cones_2_f00660",
+        "cones_2_f00675",
+        "cones_2_f00690",
+        "cones_2_f00705",
+        "mixed_2_f00555"
+      ],
+      "remove_boxes": {
+        "mixed_2_f00030": [
+          4,
+          5,
+          6
+        ],
+        "mixed_2_f00045": [
+          2,
+          4
+        ],
+        "mixed_2_f00075": [
+          1,
+          2
+        ],
+        "mixed_2_f00090": [
+          3,
+          4
+        ],
+        "mixed_2_f00105": [
+          2,
+          6
+        ],
+        "mixed_2_f00120": [
+          2
+        ],
+        "mixed_2_f00255": [
+          2
+        ],
+        "mixed_2_f00330": [
+          1
+        ],
+        "mixed_2_f00345": [
+          3
+        ],
+        "mixed_2_f00375": [
+          2
+        ],
+        "mixed_2_f00390": [
+          3
+        ],
+        "mixed_2_f00405": [
+          2
+        ],
+        "mixed_2_f00420": [
+          2
+        ],
+        "mixed_2_f00435": [
+          1,
+          4
+        ],
+        "mixed_2_f00450": [
+          1
+        ],
+        "mixed_2_f00465": [
+          1,
+          4
+        ],
+        "mixed_2_f00510": [
+          1,
+          4
+        ],
+        "mixed_2_f00525": [
+          2,
+          3
+        ],
+        "mixed_2_f00540": [
+          1
+        ]
+      },
+      "groups": [
+        {
+          "group": "cones_2",
+          "clip": "cones_2"
+        },
+        {
+          "group": "debris_2",
+          "clip": "debris_2"
+        },
+        {
+          "group": "mixed_2",
+          "clip": "mixed_2"
+        },
+        {
+          "group": "empty_2_a",
+          "clip": "empty_2",
+          "ranges": [
+            [
+              0,
+              288
+            ]
+          ]
+        },
+        {
+          "group": "empty_2_b",
+          "clip": "empty_2",
+          "ranges": [
+            [
+              288,
+              null
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "session": "session_005",
+      "labels": "datasets/rover_obstacles/raw/session_005/more_cones_export.zip",
+      "groups": [
+        {
+          "group": "posts_lot",
+          "clip": "more_cones",
+          "ranges": [
+            [
+              0,
+              530
+            ]
+          ]
+        },
+        {
+          "group": "crosswalk_curve",
+          "clip": "more_cones",
+          "ranges": [
+            [
+              530,
+              600
+            ],
+            [
+              1280,
+              1430
+            ]
+          ]
+        },
+        {
+          "group": "roadside",
+          "clip": "more_cones",
+          "ranges": [
+            [
+              800,
+              1130
+            ]
+          ]
+        },
+        {
+          "group": "track_fence",
+          "clip": "more_cones",
+          "ranges": [
+            [
+              1430,
+              1960
+            ]
+          ]
+        },
+        {
+          "group": "crosswalk_tree",
+          "clip": "more_cones",
+          "ranges": [
+            [
+              1960,
+              null
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "background_clips": [
+    "empty*"
+  ],
+  "reserved_groups": [
+    "track_fence"
+  ],
+  "folds": [
+    {
+      "name": "fold1",
+      "val_groups": [
+        "cones_2",
+        "debris_2",
+        "empty_2_a"
+      ]
+    },
+    {
+      "name": "fold2",
+      "val_groups": [
+        "posts_lot",
+        "crosswalk_curve",
+        "roadside",
+        "crosswalk_tree",
+        "mixed_2",
+        "empty_2_b"
+      ]
+    }
+  ]
+}
